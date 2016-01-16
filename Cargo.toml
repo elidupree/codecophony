@@ -1,0 +1,10 @@
+[package]
+name = "composer"
+version = "0.1.0"
+authors = ["Eli Dupree <vcs@elidupree.com>"]
+
+[dependencies.fluidsynth]
+git = "https://github.com/scholtzan/rust-fluidsynth"
+
+[dependencies]
+cpal = "0.2.8"
