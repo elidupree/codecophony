@@ -3,6 +3,8 @@ extern crate cpal;
 
 
 use std::cmp::{min, max};
+use std::collections::HashMap;
+use std::str::FromStr;
 
 type Position = i32;
 type Sample = i32;
@@ -56,6 +58,67 @@ samples [(sequence.start - minimum ) as usize + index] += *sample;
 Sequence {start: minimum, samples: samples}
 }
 
+fn interpret_script <note_factory_type:FnMut (f64, f64, Semitones)> (note_factory: &mut note_factory_type, script: &str) {
+let mut now = 0.0f64;
+let mut instructions = script.split_whitespace ();
+#[derive (Clone, Copy)]
+struct note_info {
+beginning: f64,
+}
+let mut sustained_notes = HashMap::new ();
+let mut latest_notes = HashMap::new ();
+let mut step_size = 1.0f64;
+let consume_number = | instructions: &mut std::str::SplitWhitespace | f64::from_str (instructions.next ().unwrap ()).unwrap ();
+let consume_semitones =| instructions: &mut std::str::SplitWhitespace | Semitones::from_str (instructions.next ().unwrap ()).unwrap ();
+let finish_note = | now, semitones, info: note_info, note_factory: &mut note_factory_type | {note_factory (info.beginning, now, semitones);};
+let finish_notes = | now: &mut f64, step_size, latest_notes: &mut HashMap <Semitones, note_info>, note_factory: &mut note_factory_type | {
+let last_begin = latest_notes.values ().fold (- 900000000.0f64, | max, info: &note_info | if info.beginning >max {info.beginning} else {max});
+let step_end = last_begin + step_size;
+if step_end >*now {*now = step_end};
+
+for (semitones, info) in latest_notes .iter () {
+finish_note (*now, *semitones, *info, note_factory);
+}
+latest_notes.clear ();
+};
+let do_note = | now, semitones, container: &mut HashMap <Semitones, note_info> | {
+container.insert (semitones, note_info {beginning: now});
+};
+loop {
+match instructions.next () {
+None => break,
+Some (instruction) => {
+match Semitones::from_str (instruction) {
+Err (_) => match instruction {
+"at" => {
+let time = consume_number (&mut instructions);
+if time <now {assert! (latest_notes.is_empty ())}
+now = time;
+},
+"advance" => {
+let time = consume_number (&mut instructions);
+if time <0.0 {assert! (latest_notes.is_empty ())}
+now += time;
+},
+"and" => do_note (now, consume_semitones (&mut instructions), &mut latest_notes),
+"sustain" => do_note (now, consume_semitones (&mut instructions), &mut sustained_notes),
+"release" => {
+let semitones = consume_semitones (&mut instructions);
+finish_note (now, semitones, sustained_notes.remove (&semitones).unwrap (), note_factory);
+},
+"step" => step_size = consume_number (&mut instructions),
+"finish" => finish_notes (&mut now, step_size, &mut latest_notes, note_factory),
+_=> (),
+},
+Ok (semitones) => {
+finish_notes (&mut now, step_size, &mut latest_notes, note_factory);
+do_note (now, semitones, &mut latest_notes)
+},
+}
+}
+}
+}
+}
 
 fn main() {
     let endpoint = cpal::get_default_endpoint().unwrap();
@@ -67,7 +130,10 @@ let mut sequences: Vec< Sequence> = Vec::new ();
 {
 let mut add = | time: f64, pitch | {sequences.push (
 	hack_note {start: time/4.0, frequency: 440.0*semitone_ratio.powi (pitch), amplitude: 4000.0,}.render (format.samples_rate.0 as i32))};
-add (0.0, 0); add (1.5, 5); add (2.0, 7); add (3.0, 11); add (4.0, 12);
+
+let mut note_factory = | start: f64, end: f64, semitones: Semitones | {add (start, semitones - 12);};
+interpret_script (&mut note_factory, "12 and 15 and 19 5 8 step 0.5 5 8 10 12 step 1.5 5 step 0.5 7 advance 2 finish");
+//add (0.0, 0); add (1.5, 5); add (2.0, 7); add (3.0, 11); add (4.0, 12);
 }
 let music = merge (&sequences);
 let mut data_source = music.samples.iter ().cycle ().map (| sample | *sample as f32);
