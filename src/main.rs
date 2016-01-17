@@ -58,9 +58,9 @@ samples [(sequence.start - minimum ) as usize + index] += *sample;
 Sequence {start: minimum, samples: samples}
 }
 
-fn interpret_script <note_factory_type:FnMut (f64, f64, Semitones)> (note_factory: &mut note_factory_type, script: &str) {
+fn interpret_scrawl <note_factory_type:FnMut (f64, f64, Semitones)> (note_factory: &mut note_factory_type, scrawl: &str) {
 let mut now = 0.0f64;
-let mut instructions = script.split_whitespace ();
+let mut instructions = scrawl.split_whitespace ();
 #[derive (Clone, Copy)]
 struct note_info {
 beginning: f64,
@@ -132,7 +132,7 @@ let mut add = | time: f64, pitch | {sequences.push (
 	hack_note {start: time/4.0, frequency: 440.0*semitone_ratio.powi (pitch), amplitude: 4000.0,}.render (format.samples_rate.0 as i32))};
 
 let mut note_factory = | start: f64, end: f64, semitones: Semitones | {add (start, semitones - 12);};
-interpret_script (&mut note_factory, "12 and 15 and 19 5 8 step 0.5 5 8 10 12 step 1.5 5 step 0.5 7 advance 2 finish");
+interpret_scrawl (&mut note_factory, "12 and 15 and 19 5 8 step 0.5 5 8 10 12 step 1.5 5 step 0.5 7 advance 2 finish");
 //add (0.0, 0); add (1.5, 5); add (2.0, 7); add (3.0, 11); add (4.0, 12);
 }
 let music = merge (&sequences);
