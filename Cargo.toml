@@ -8,3 +8,4 @@ authors = ["Eli Dupree <vcs@elidupree.com>"]
 
 [dependencies]
 cpal = "0.2.8"
+hound = "1.1.0"

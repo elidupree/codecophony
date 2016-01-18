@@ -1,6 +1,5 @@
-
 extern crate cpal;
-
+extern crate hound;
 
 use std::cmp::{min, max};
 use std::collections::HashMap;
@@ -120,6 +119,8 @@ do_note (now, semitones, &mut latest_notes)
 }
 }
 
+
+
 fn main() {
     let endpoint = cpal::get_default_endpoint().unwrap();
     let format = endpoint.get_supported_formats_list().unwrap().next().unwrap();
@@ -136,10 +137,24 @@ interpret_scrawl (&mut note_factory, "12 and 15 and 19 5 8 step 0.5 5 8 10 12 st
 //add (0.0, 0); add (1.5, 5); add (2.0, 7); add (3.0, 11); add (4.0, 12);
 }
 let music = merge (&sequences);
-let mut data_source = music.samples.iter ().cycle ().map (| sample | *sample as f32);
+
+
+let mut data_source = music.samples.iter ().map (| sample | *sample as f32);
  for _whatever in 0..0 {
 println!( "{}", data_source.next ().unwrap());
 }
+
+let spec = hound::WavSpec {
+    channels: 1,
+    sample_rate: 44100,
+    bits_per_sample: 16
+};
+let mut writer = hound::WavWriter::create("output.wav", spec).unwrap();
+for t in music.samples.iter () {
+    writer.write_sample(*t as i16).unwrap();
+}
+
+
     // Produce a sinusoid of maximum amplitude.
     //let mut data_source = (0u64..).map(|t| t as f32 * 440.0 * 2.0 * 3.141592 / format.samples_rate.0 as f32)     // 440 Hz
     //                              .map(|t| t.sin());
@@ -166,6 +181,8 @@ println!( "{}", data_source.next ().unwrap());
                 }
             },
         }
+        //hack: terminate by dropping one sample each time.
+        if let None = data_source.next () {break;}
 
         channel.play();
     }
