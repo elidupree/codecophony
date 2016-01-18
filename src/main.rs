@@ -41,6 +41,15 @@ fn render (& self, sample_rate: Position)->Sequence {
   self.renderer.render (self.basics, sample_rate)
 }
 }
+impl <Render: Renderer + Transposable> Note <Render> {
+fn transpose (&mut self, amount: Semitones)->&mut Note <Render>  {
+self.renderer.transpose (amount); self
+}
+fn transposed (& self, amount: Semitones)->Note <Render>  {
+let mut result = self.clone (); result.transpose (amount); result
+}
+}
+
 
 #[derive (Clone)]
 struct Notes <Render: Renderer> {
@@ -50,9 +59,16 @@ impl <Render: Renderer> std::ops::Deref for Notes <Render> {
 type Target =Vec< Note <Render>>;
 fn deref (& self)->& Vec< Note <Render>>{& self.data}
 }
+impl <Render: Renderer> std::ops::DerefMut for Notes <Render> {
+fn deref_mut (& mut self)->& mut Vec< Note <Render>>{& mut self.data}
+}
+
 impl <Render: Renderer> Notes <Render> {
 fn new ()->Notes <Render> {Notes:: <Render> {data: Vec::new ()}}
-fn push (& mut self, value:Note <Render>) {self.data.push (value)}
+fn add (& mut self, other: & Notes <Render>) {
+self.extend (other.iter ().map (| note | note.clone ()))
+}
+
 fn translate (&mut self, amount: f64)->&mut Notes <Render> {
 for note in self.data.iter_mut () {note.basics.start += amount} self
 }
@@ -196,25 +212,29 @@ fn main() {
     let mut channel = cpal::Voice::new(&endpoint, &format).unwrap();
     
     println!( "sample rate is {}", format.samples_rate.0);
-    let mut notes: Notes <SineWave> = Notes ::new ();
 
-{
 
-let mut note_factory = | start: f64, end: f64, semitones: Semitones | {
-notes.push (
-	Note:: <SineWave>::new (start/4.0, (end - start)/4.0, SineWave {frequency: 440.0*SEMITONE_RATIO.powi (semitones - 12), amplitude: 4000.0,}));};
+let mut notes = Notes::new ();
 
-interpret_scrawl (&mut note_factory, "12 and 15 and 19 5 8 step 0.5 5 8 10 12 sustain 17 sustain 20 step 1 5 step 0.5 7 advance 2.5 finish release 17 release 20");
+interpret_scrawl (&mut | start, end, semitones| {
+  let mut note = Note::<SineWave>::new (start/4.0, (end - start)/4.0,
+    SineWave {frequency: 440.0, amplitude: 4000.0,});
+  note.transpose (semitones - 12); notes.push (note);
+},
+"
+12 and 15 and 19 5 8 step 0.5 5 8 10
+12 sustain 17 sustain 20 step 1 5 step 0.5 7 advance 2.5
+finish release 17 release 20
+");
 
-}
-{
 let added = notes.translated (2.0);
-notes.data.extend (added.data.into_iter ());
-}
-{
+notes.add (& added);
 let added = notes.translated (4.0).transposed (7);
-notes.data.extend (added.data . into_iter ());
-}
+notes.add (& added);
+
+
+
+
 //add (0.0, 0); add (1.5, 5); add (2.0, 7); add (3.0, 11); add (4.0, 12);
 {
     let sequences: Vec< Sequence> = notes.iter ().map (| note | note.render(44100)).collect ();
