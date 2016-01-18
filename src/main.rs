@@ -16,11 +16,12 @@ start: Position,
 samples: Vec< Sample>,
 }
 
-trait Note {
+trait Note: Clone {
 fn render (& self, sample_rate: Position)->Sequence;
 fn transpose (& mut self, semitones: Semitones) {}
 }
 
+#[derive (Clone)]
 struct hack_note {
 start: f64,
 frequency:f64,
@@ -134,8 +135,12 @@ let mut add = | time: f64, pitch | {notes.push (
 	hack_note {start: time/4.0, frequency: 440.0*semitone_ratio.powi (pitch), amplitude: 4000.0,})};
 
 let mut note_factory = | start: f64, end: f64, semitones: Semitones | {add (start, semitones - 12);};
-interpret_scrawl (&mut note_factory, "12 and 15 and 19 5 8 step 0.5 5 8 10 12 step 1.5 5 step 0.5 7 advance 2 finish");
-//add (0.0, 0); add (1.5, 5); add (2.0, 7); add (3.0, 11); add (4.0, 12);
+interpret_scrawl (&mut note_factory, "12 and 15 and 19 5 8 step 0.5 5 8 10 12 sustain 17 sustain 20 step 1 5 step 0.5 7 advance 2.5 finish release 17 release 20");//add (0.0, 0); add (1.5, 5); add (2.0, 7); add (3.0, 11); add (4.0, 12);
+}
+{
+let whatever = notes.clone ();
+let added = whatever.iter ().map (| note | hack_note {start: note.start + 8.0,..*note});
+notes.extend (added);
 }
 {
     let mut sequences: Vec< Sequence> = notes.iter ().map (| note | note.render(44100)).collect ();
