@@ -8,7 +8,7 @@ use std::str::FromStr;
 type Position = i32;
 type Sample = i32;
 type Semitones = i32;
-const semitone_ratio: f64 = (1.0594631f64);
+const SEMITONE_RATIO: f64 = (1.0594631f64);
 
 #[derive (Clone)]
 struct Sequence {
@@ -16,32 +16,96 @@ start: Position,
 samples: Vec< Sample>,
 }
 
-trait Note: Clone {
-fn render (& self, sample_rate: Position)->Sequence;
-fn transpose (& mut self, semitones: Semitones) {}
+#[derive (Clone, Copy)]
+struct NoteBasics {
+start: f64,
+duration: f64,
+}
+
+//trait SequenceTransform<RendererType: Renderer> : Clone + Fn (&mut Sequence, &Note <RendererType>)->() {}
+
+#[derive (Clone)]
+struct Note <RendererType: Renderer> {
+basics: NoteBasics,
+renderer: RendererType,
+
+
+//sequence_transforms: Vec<Box <SequenceTransform <RendererType> >>,
+}
+
+impl <RendererType: Renderer> Note <RendererType> {
+fn new (start: f64, duration: f64, renderer: RendererType)->Note <RendererType> {
+  Note:: <RendererType> {basics: NoteBasics {start: start, duration: duration}, renderer: renderer/*, sequence_transforms: Vec::new (),*/}
+}
+fn render (& self, sample_rate: Position)->Sequence {
+  self.renderer.render (self.basics, sample_rate)
+}
 }
 
 #[derive (Clone)]
-struct hack_note {
-start: f64,
-duration: f64,
+struct Notes <Render: Renderer> {
+data: Vec< Note <Render>>,
+}
+impl <Render: Renderer> std::ops::Deref for Notes <Render> {
+type Target =Vec< Note <Render>>;
+fn deref (& self)->& Vec< Note <Render>>{& self.data}
+}
+impl <Render: Renderer> Notes <Render> {
+fn new ()->Notes <Render> {Notes:: <Render> {data: Vec::new ()}}
+fn push (& mut self, value:Note <Render>) {self.data.push (value)}
+fn translate (&mut self, amount: f64)->&mut Notes <Render> {
+for note in self.data.iter_mut () {note.basics.start += amount} self
+}
+fn translated (& self, amount: f64)->Notes <Render>  {
+let mut result = self.clone (); result.translate (amount); result
+}
+fn modify_renderers (&mut self, modifier: &Fn (&mut Render))->& mut Notes <Render>  {
+for note in self.data.iter_mut () {modifier (&mut note.renderer)} self
+}
+fn with_renderers (& self, modifier: &Fn (&mut Render))->Notes <Render>  {
+let mut result = self.clone (); result.modify_renderers (modifier); result
+}
+}
+impl <Render: Renderer + Transposable> Notes <Render> {
+fn transpose (&mut self, amount: Semitones)->&mut Notes <Render>  {
+for note in self.data.iter_mut () {note.renderer.transpose (amount)} self
+}
+fn transposed (& self, amount: Semitones)->Notes <Render>  {
+let mut result = self.clone (); result. transpose (amount); result
+}
+}
+
+
+
+trait Renderer: Clone {
+fn render (& self, basics: NoteBasics, sample_rate: Position)->Sequence;
+}
+
+trait Transposable {
+fn transpose (&mut self, amount: Semitones);
+}
+
+#[derive (Clone)]
+struct SineWave {
 frequency:f64,
 amplitude: f64,
 }
 
-impl Note for hack_note {
-fn render (& self, sample_rate: Position)->Sequence {
+impl Renderer for SineWave {
+fn render (& self, basics: NoteBasics, sample_rate: Position)->Sequence {
 let mut samples: Vec< Sample> = Vec::new ();
-let after =(self.duration*sample_rate as f64) as Position;
+let after =( basics.duration*sample_rate as f64) as Position;
 for time in 0..after {
 let mut sample = (self.amplitude*(self.frequency*time as f64*(std::f64::consts::PI*2.0)/sample_rate as f64).sin ()) as Sample;
 if after-time <20 {sample = sample*(after-time)/20;}
 samples.push (sample);
 }
-Sequence {start: (self.start*sample_rate as f64) as Position, samples: samples}
+Sequence {start: (basics.start*sample_rate as f64) as Position, samples: samples}
 }
-fn transpose (&mut self, semitones: Semitones) {
-self.frequency *= semitone_ratio.powi (semitones);
+}
+impl Transposable for SineWave {
+fn transpose (&mut self, amount: Semitones) {
+self.frequency*= SEMITONE_RATIO.powi (amount)
 }
 }
 
@@ -132,30 +196,28 @@ fn main() {
     let mut channel = cpal::Voice::new(&endpoint, &format).unwrap();
     
     println!( "sample rate is {}", format.samples_rate.0);
-    let mut notes: Vec< hack_note> = Vec::new ();
+    let mut notes: Notes <SineWave> = Notes ::new ();
 
 {
 
 let mut note_factory = | start: f64, end: f64, semitones: Semitones | {
 notes.push (
-	hack_note {start: start/4.0, duration: (end - start)/4.0, frequency: 440.0*semitone_ratio.powi (semitones - 12), amplitude: 4000.0,});};
+	Note:: <SineWave>::new (start/4.0, (end - start)/4.0, SineWave {frequency: 440.0*SEMITONE_RATIO.powi (semitones - 12), amplitude: 4000.0,}));};
 
 interpret_scrawl (&mut note_factory, "12 and 15 and 19 5 8 step 0.5 5 8 10 12 sustain 17 sustain 20 step 1 5 step 0.5 7 advance 2.5 finish release 17 release 20");
-//add (0.0, 0); add (1.5, 5); add (2.0, 7); add (3.0, 11); add (4.0, 12);
-}
-{
-let whatever = notes.clone ();
-let added = whatever.iter ().map (| note | hack_note {start: note.start + 2.0,..*note});
-notes.extend (added);
-}
-{
-let whatever = notes.clone ();
-let added = whatever.iter ().map (| note | hack_note {start: note.start + 4.0 , frequency: note.frequency*semitone_ratio.powi (7), ..*note});
-notes.extend (added);
-}
 
+}
 {
-    let mut sequences: Vec< Sequence> = notes.iter ().map (| note | note.render(44100)).collect ();
+let added = notes.translated (2.0);
+notes.data.extend (added.data.into_iter ());
+}
+{
+let added = notes.translated (4.0).transposed (7);
+notes.data.extend (added.data . into_iter ());
+}
+//add (0.0, 0); add (1.5, 5); add (2.0, 7); add (3.0, 11); add (4.0, 12);
+{
+    let sequences: Vec< Sequence> = notes.iter ().map (| note | note.render(44100)).collect ();
 let music = merge (&sequences);
 
 let spec = hound::WavSpec {
@@ -170,7 +232,7 @@ for t in music.samples.iter () {
 }
 {
 
-    let mut sequences: Vec< Sequence> = notes.iter ().map (| note | note.render(format.samples_rate.0 as i32)).collect ();
+    let sequences: Vec< Sequence> = notes.iter ().map (| note | note.render(format.samples_rate.0 as i32)).collect ();
 let music = merge (&sequences);
 
 
