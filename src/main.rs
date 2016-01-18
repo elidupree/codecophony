@@ -127,22 +127,19 @@ fn main() {
     let mut channel = cpal::Voice::new(&endpoint, &format).unwrap();
     
     println!( "sample rate is {}", format.samples_rate.0);
-let mut sequences: Vec< Sequence> = Vec::new ();
+    let mut notes: Vec< hack_note> = Vec::new ();
+
 {
-let mut add = | time: f64, pitch | {sequences.push (
-	hack_note {start: time/4.0, frequency: 440.0*semitone_ratio.powi (pitch), amplitude: 4000.0,}.render (format.samples_rate.0 as i32))};
+let mut add = | time: f64, pitch | {notes.push (
+	hack_note {start: time/4.0, frequency: 440.0*semitone_ratio.powi (pitch), amplitude: 4000.0,})};
 
 let mut note_factory = | start: f64, end: f64, semitones: Semitones | {add (start, semitones - 12);};
 interpret_scrawl (&mut note_factory, "12 and 15 and 19 5 8 step 0.5 5 8 10 12 step 1.5 5 step 0.5 7 advance 2 finish");
 //add (0.0, 0); add (1.5, 5); add (2.0, 7); add (3.0, 11); add (4.0, 12);
 }
+{
+    let mut sequences: Vec< Sequence> = notes.iter ().map (| note | note.render(44100)).collect ();
 let music = merge (&sequences);
-
-
-let mut data_source = music.samples.iter ().map (| sample | *sample as f32);
- for _whatever in 0..0 {
-println!( "{}", data_source.next ().unwrap());
-}
 
 let spec = hound::WavSpec {
     channels: 1,
@@ -152,6 +149,17 @@ let spec = hound::WavSpec {
 let mut writer = hound::WavWriter::create("output.wav", spec).unwrap();
 for t in music.samples.iter () {
     writer.write_sample(*t as i16).unwrap();
+}
+}
+{
+
+    let mut sequences: Vec< Sequence> = notes.iter ().map (| note | note.render(format.samples_rate.0 as i32)).collect ();
+let music = merge (&sequences);
+
+
+let mut data_source = music.samples.iter ().map (| sample | *sample as f32);
+ for _whatever in 0..0 {
+println!( "{}", data_source.next ().unwrap());
 }
 
 
@@ -186,6 +194,7 @@ for t in music.samples.iter () {
 
         channel.play();
     }
+}
 }
 
 //extern crate fluidsynth;
