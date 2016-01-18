@@ -149,6 +149,12 @@ let added = whatever.iter ().map (| note | hack_note {start: note.start + 2.0,..
 notes.extend (added);
 }
 {
+let whatever = notes.clone ();
+let added = whatever.iter ().map (| note | hack_note {start: note.start + 4.0 , frequency: note.frequency*semitone_ratio.powi (7), ..*note});
+notes.extend (added);
+}
+
+{
     let mut sequences: Vec< Sequence> = notes.iter ().map (| note | note.render(44100)).collect ();
 let music = merge (&sequences);
 
