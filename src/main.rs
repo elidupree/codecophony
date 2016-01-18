@@ -24,6 +24,7 @@ fn transpose (& mut self, semitones: Semitones) {}
 #[derive (Clone)]
 struct hack_note {
 start: f64,
+duration: f64,
 frequency:f64,
 amplitude: f64,
 }
@@ -31,8 +32,11 @@ amplitude: f64,
 impl Note for hack_note {
 fn render (& self, sample_rate: Position)->Sequence {
 let mut samples: Vec< Sample> = Vec::new ();
-for time in 0..(sample_rate/4) {
-samples.push ((self.amplitude*(self.frequency*time as f64*(std::f64::consts::PI*2.0)/sample_rate as f64).sin ()) as Sample);
+let after =(self.duration*sample_rate as f64) as Position;
+for time in 0..after {
+let mut sample = (self.amplitude*(self.frequency*time as f64*(std::f64::consts::PI*2.0)/sample_rate as f64).sin ()) as Sample;
+if after-time <20 {sample = sample*(after-time)/20;}
+samples.push (sample);
 }
 Sequence {start: (self.start*sample_rate as f64) as Position, samples: samples}
 }
@@ -131,15 +135,17 @@ fn main() {
     let mut notes: Vec< hack_note> = Vec::new ();
 
 {
-let mut add = | time: f64, pitch | {notes.push (
-	hack_note {start: time/4.0, frequency: 440.0*semitone_ratio.powi (pitch), amplitude: 4000.0,})};
 
-let mut note_factory = | start: f64, end: f64, semitones: Semitones | {add (start, semitones - 12);};
-interpret_scrawl (&mut note_factory, "12 and 15 and 19 5 8 step 0.5 5 8 10 12 sustain 17 sustain 20 step 1 5 step 0.5 7 advance 2.5 finish release 17 release 20");//add (0.0, 0); add (1.5, 5); add (2.0, 7); add (3.0, 11); add (4.0, 12);
+let mut note_factory = | start: f64, end: f64, semitones: Semitones | {
+notes.push (
+	hack_note {start: start/4.0, duration: (end - start)/4.0, frequency: 440.0*semitone_ratio.powi (semitones - 12), amplitude: 4000.0,});};
+
+interpret_scrawl (&mut note_factory, "12 and 15 and 19 5 8 step 0.5 5 8 10 12 sustain 17 sustain 20 step 1 5 step 0.5 7 advance 2.5 finish release 17 release 20");
+//add (0.0, 0); add (1.5, 5); add (2.0, 7); add (3.0, 11); add (4.0, 12);
 }
 {
 let whatever = notes.clone ();
-let added = whatever.iter ().map (| note | hack_note {start: note.start + 8.0,..*note});
+let added = whatever.iter ().map (| note | hack_note {start: note.start + 2.0,..*note});
 notes.extend (added);
 }
 {
