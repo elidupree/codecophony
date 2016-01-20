@@ -243,7 +243,7 @@ let manual = scrawl_notes (&|semitones| SineWave {frequency: 220.0, amplitude: 4
 12 sustain 17 sustain 20 step 1 5 step 0.5 7 advance 2.5
 finish release 17 release 20
 ");
-let mut notes = Notes::combining (& [manual.translated (8.0), manual.translated (16.0).transposed (7), manual.translated (24.0).transposed (7)]).scaled (0.25);
+let mut notes = Notes::combining (& [manual.clone (), manual.translated (8.0), manual.translated (16.0).transposed (7), manual.translated (24.0).transposed (7)]).scaled (0.25);
 
 
 //add (0.0, 0); add (1.5, 5); add (2.0, 7); add (3.0, 11); add (4.0, 12);
