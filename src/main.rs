@@ -103,10 +103,19 @@ for note in self.data.iter_mut () {note.scale_about (amount, origin);} self
 }
 }
 
+impl <Render: Renderer > Renderer for Notes <Render> {
+fn render (& self, basics: NoteBasics, sample_rate: Position)->Sequence {
+let sequences: Vec< Sequence> = self.iter ().map (| note | note.render(sample_rate)).collect ();
+let mut result = merge (&sequences);
+result.start += (basics.start*sample_rate as f64) as Position;
+result
+}
+}
 
 
 trait Renderer: Clone {
 fn render (& self, basics: NoteBasics, sample_rate: Position)->Sequence;
+fn render_default (& self, sample_rate: Position)->Sequence {self.render (NoteBasics{start: 0.0, duration: 0.0}, sample_rate)}
 }
 
 trait Transposable: Clone {
@@ -237,19 +246,24 @@ fn main() {
     println!( "sample rate is {}", format.samples_rate.0);
 
 
-let manual = scrawl_notes (&|semitones| SineWave {frequency: 220.0, amplitude: 4000.0,}.transposed (semitones),
+let manual = scrawl_notes (
+&|semitones| SineWave {frequency: 220.0, amplitude: 4000.0}.transposed (semitones),
 "
 12 and 15 and 19 5 8 step 0.5 5 8 10
 12 sustain 17 sustain 20 step 1 5 step 0.5 7 advance 2.5
 finish release 17 release 20
 ");
-let mut notes = Notes::combining (& [manual.clone (), manual.translated (8.0), manual.translated (16.0).transposed (7), manual.translated (24.0).transposed (7)]).scaled (0.25);
+let notes = Notes::combining (& [
+  manual.clone (),
+  manual.translated (8.0),
+  manual.translated (16.0).transposed (7),
+  manual.translated (24.0).transposed (7)]
+).scaled (0.25);
 
 
 //add (0.0, 0); add (1.5, 5); add (2.0, 7); add (3.0, 11); add (4.0, 12);
-{
-    let sequences: Vec< Sequence> = notes.iter ().map (| note | note.render(44100)).collect ();
-let music = merge (&sequences);
+
+let music = notes.render_default (44100);
 
 let spec = hound::WavSpec {
     channels: 1,
@@ -259,15 +273,14 @@ let spec = hound::WavSpec {
 let mut writer = hound::WavWriter::create("output.wav", spec).unwrap();
 for t in music.samples.iter () {
     writer.write_sample(*t as i16).unwrap();
+
 }
-}
-{
-
-    let sequences: Vec< Sequence> = notes.iter ().map (| note | note.render(format.samples_rate.0 as i32)).collect ();
-let music = merge (&sequences);
 
 
-let mut data_source = music.samples.iter ().map (| sample | *sample as f32);
+let music_live = notes.render_default (format.samples_rate.0 as i32);
+
+
+let mut data_source = music_live.samples.iter ().map (| sample | *sample as f32);
  for _whatever in 0..0 {
 println!( "{}", data_source.next ().unwrap());
 }
@@ -305,7 +318,7 @@ println!( "{}", data_source.next ().unwrap());
         channel.play();
     }
 }
-}
+
 
 //extern crate fluidsynth;
 ////extern crate time;
