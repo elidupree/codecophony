@@ -41,12 +41,16 @@ fn render (& self, sample_rate: Position)->Sequence {
   self.renderer.render (self.basics, sample_rate)
 }
 }
-impl <Render: Renderer + Transposable> Note <Render> {
+impl <Render: Renderer + Transposable> Transposable for Note <Render> {
 fn transpose (&mut self, amount: Semitones)->&mut Note <Render>  {
 self.renderer.transpose (amount); self
 }
-fn transposed (& self, amount: Semitones)->Note <Render>  {
-let mut result = self.clone (); result.transpose (amount); result
+}
+impl <Render: Renderer> Scalable for Note <Render> {
+fn scale_about (&mut self, amount: f64, origin: f64)->&mut Note <Render>  {
+self.basics.start = origin + (self.basics.start - origin)*amount;
+self.basics.duration *= amount;
+self
 }
 }
 
@@ -68,6 +72,11 @@ fn new ()->Notes <Render> {Notes:: <Render> {data: Vec::new ()}}
 fn add (& mut self, other: & Notes <Render>) {
 self.extend (other.iter ().map (| note | note.clone ()))
 }
+fn combining (parts: & [Self])->Self {
+let mut result = Self::new ();
+for other in parts {result.add (other);}
+result
+}
 
 fn translate (&mut self, amount: f64)->&mut Notes <Render> {
 for note in self.data.iter_mut () {note.basics.start += amount} self
@@ -82,12 +91,15 @@ fn with_renderers (& self, modifier: &Fn (&mut Render))->Notes <Render>  {
 let mut result = self.clone (); result.modify_renderers (modifier); result
 }
 }
-impl <Render: Renderer + Transposable> Notes <Render> {
+impl <Render: Renderer + Transposable> Transposable for Notes <Render> {
 fn transpose (&mut self, amount: Semitones)->&mut Notes <Render>  {
-for note in self.data.iter_mut () {note.renderer.transpose (amount)} self
+for note in self.data.iter_mut () {note.transpose (amount);} self
 }
-fn transposed (& self, amount: Semitones)->Notes <Render>  {
-let mut result = self.clone (); result. transpose (amount); result
+}
+
+impl <Render: Renderer > Scalable for Notes <Render> {
+fn scale_about (&mut self, amount: f64, origin: f64)->&mut Notes <Render>  {
+for note in self.data.iter_mut () {note.scale_about (amount, origin);} self
 }
 }
 
@@ -97,8 +109,15 @@ trait Renderer: Clone {
 fn render (& self, basics: NoteBasics, sample_rate: Position)->Sequence;
 }
 
-trait Transposable {
-fn transpose (&mut self, amount: Semitones);
+trait Transposable: Clone {
+fn transpose (&mut self, amount: Semitones)->& mut Self;
+fn transposed (& self, amount: Semitones)->Self {let mut result = self.clone (); result.transpose (amount); result}
+}
+trait Scalable: Clone {
+fn scale (&mut self, amount: f64)->& mut Self {self.scale_about (amount, 0.0)}
+fn scaled (& self, amount: f64)->Self {let mut result = self.clone (); result.scale (amount); result}
+fn scale_about (&mut self, amount: f64, origin: f64)->& mut Self;
+fn scaled_about (& self, amount: f64, origin: f64)->Self {let mut result = self.clone (); result.scale_about (amount, origin); result}
 }
 
 #[derive (Clone)]
@@ -120,8 +139,8 @@ Sequence {start: (basics.start*sample_rate as f64) as Position, samples: samples
 }
 }
 impl Transposable for SineWave {
-fn transpose (&mut self, amount: Semitones) {
-self.frequency*= SEMITONE_RATIO.powi (amount)
+fn transpose (&mut self, amount: Semitones)->&mut Self {
+self.frequency*= SEMITONE_RATIO.powi (amount); self
 }
 }
 
@@ -204,7 +223,11 @@ do_note (now, semitones, &mut latest_notes)
 }
 }
 
-
+fn scrawl_notes <renderer_type: Renderer, Generator:Fn (Semitones)->renderer_type> (generator: & Generator, scrawl: & str)->Notes <renderer_type > {
+  let mut notes = Notes::new ();
+  interpret_scrawl (&mut | start, end, semitones | notes.push (Note::<renderer_type>::new (start, end - start, generator (semitones))), scrawl);
+  return notes;
+}
 
 fn main() {
     let endpoint = cpal::get_default_endpoint().unwrap();
@@ -214,25 +237,13 @@ fn main() {
     println!( "sample rate is {}", format.samples_rate.0);
 
 
-let mut notes = Notes::new ();
-
-interpret_scrawl (&mut | start, end, semitones| {
-  let mut note = Note::<SineWave>::new (start/4.0, (end - start)/4.0,
-    SineWave {frequency: 440.0, amplitude: 4000.0,});
-  note.transpose (semitones - 12); notes.push (note);
-},
+let manual = scrawl_notes (&|semitones| SineWave {frequency: 220.0, amplitude: 4000.0,}.transposed (semitones),
 "
 12 and 15 and 19 5 8 step 0.5 5 8 10
 12 sustain 17 sustain 20 step 1 5 step 0.5 7 advance 2.5
 finish release 17 release 20
 ");
-
-let added = notes.translated (2.0);
-notes.add (& added);
-let added = notes.translated (4.0).transposed (7);
-notes.add (& added);
-
-
+let mut notes = Notes::combining (& [manual.translated (8.0), manual.translated (16.0).transposed (7), manual.translated (24.0).transposed (7)]).scaled (0.25);
 
 
 //add (0.0, 0); add (1.5, 5); add (2.0, 7); add (3.0, 11); add (4.0, 12);
