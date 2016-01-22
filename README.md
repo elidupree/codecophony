@@ -1,6 +1,6 @@
 # Codecophony: compose music through programming
 
-This project is not useful yet, but it plays a little ditty if you run it.
+This project is not useful yet, but it writes a little ditty to a file if you run it.
 
 I'm a Rust beginner, so some of my code may not be elegant or idiomatic. I'd appreciate people pointing out what I'm doing wrong.
 
