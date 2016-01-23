@@ -404,8 +404,9 @@ let ID = sequencer.register_fluidsynth (&mut synthesizer);
 event.set_source (-1); event.set_destination (ID);
 event.noteon (0, 64, 100);
 let now = sequencer.get_tick ();
+assert! (now == 0);
 sequencer.send_at (&mut event, now, 1);
-
+sequencer.process (1000);
 for _ in 0..(settings.getnum ("synth.sample-rate").unwrap () as i32/settings.getint ("audio.period-size").unwrap ()) {renderer.process_block ();}
   }
 
