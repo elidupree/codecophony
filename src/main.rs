@@ -224,7 +224,7 @@ self.pitch += amount as i16; self
 }
 impl Renderer for MIDINote {
 fn render (& self, basics: NoteBasics, sample_rate: Position)->Sequence {
-
+{
   let mut settings = fluidsynth::settings::Settings::new ();
   settings.setstr ("audio.file.name", "test_render.wav");
   settings.setstr ("audio.file.type", "wav");
@@ -242,6 +242,7 @@ event.set_source (-1); event.set_destination (ID);
 event.noteon (0, self.pitch, self.velocity);
 sequencer.send_at (&mut event, 0, 1);
 for _ in 0..(2.0*basics.duration* settings.getnum ("synth.sample-rate").unwrap () /settings.getint ("audio.period-size").unwrap () as f64) as i32 {renderer.process_block ();}
+}
 //the settings change above didn't work, for some reason, so the file is@" fluidsynth.wav"
 let mut reader = hound::WavReader::open ("fluidsynth.wav").unwrap ();
 //hack: convert stereo to mono
