@@ -212,11 +212,24 @@ impl Transposable for SineWave {
 }
 
 #[derive (Clone)]
+struct MIDIInstrument {
+channel: i32,
+program: i16,
+}
+impl MIDIInstrument {
+fn new (program: i16)->Self {MIDIInstrument {program: program, channel: 0}}
+fn percussion ()->Self {MIDIInstrument {program: 0, channel: 10}}
+}
+
+#[derive (Clone)]
 struct MIDINote {
 pitch: i16,
 velocity: i16,
-//instrument:
+instrument: MIDIInstrument,
 }
+/*impl Default for MIDINote {
+fn default ()->Self {MIDINote {pitch: 64, velocity: 64, MIDIInstrument {channel: 0, instrument: 0}}}
+}*/
 impl Transposable for MIDINote {
 fn transpose (&mut self, amount: Semitones)->& mut Self {
 self.pitch += amount as i16; self
@@ -236,17 +249,20 @@ let ID = sequencer.register_fluidsynth (&mut synthesizer);
   let mut renderer = fluidsynth::audio::FileRenderer::new (&mut synthesizer);
   synthesizer.sfload ("/usr/share/sounds/sf2/FluidR3_GM.sf2", 1);
   
+  let mut send_event = | time, assign: & Fn (&mut fluidsynth::event::Event) | {
   
   let mut event = fluidsynth::event::Event::new ();
 event.set_source (-1); event.set_destination (ID);
-event.noteon (0, self.pitch, self.velocity);
-sequencer.send_at (&mut event, 0, 1);
-  let mut event = fluidsynth::event::Event::new ();
-event.set_source (-1); event.set_destination (ID);
-event.noteoff (0, self.pitch);
-sequencer.send_at (&mut event, (basics.duration *1000.0) as u32, 1);
+assign (&mut event);
+sequencer.send_at (&mut event, time, 1);
+  };
+  send_event (0, & | event | event.program_change (self.instrument.channel, self.instrument.program));
+  send_event (0,
+& | event | event.noteon (self.instrument.channel, self.pitch, self.velocity));
+send_event ((basics.duration *1000.0) as u32, & | event |
+event.noteoff (self.instrument.channel, self.pitch));
 
-
+//TODO: instead of just using twice the duration, specifically continue rendering until we get all zeros
 for _ in 0..(2.0*basics.duration* settings.getnum ("synth.sample-rate").unwrap () /settings.getint ("audio.period-size").unwrap () as f64) as i32 {renderer.process_block ();}
 }
 //the settings change above didn't work, for some reason, so the file is@" fluidsynth.wav"
@@ -403,6 +419,7 @@ fn main() {
 MIDINote {
 pitch: 57+ semitones as i16,
 velocity: 100,
+instrument: MIDIInstrument::new (43),
                               }
                             },
                             "
@@ -434,7 +451,7 @@ finish release 17 release 20
   }
 
 
-  let music_live = notes.render_default(format.samples_rate.0 as i32);
+  /*let music_live = notes.render_default(format.samples_rate.0 as i32);
 
 
   let mut data_source = music_live.samples.iter().map(|sample| *sample as f32);
@@ -484,7 +501,7 @@ finish release 17 release 20
     }
 
     channel.play();
-  }
+  }*/
 }
 
 
