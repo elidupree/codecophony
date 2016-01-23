@@ -241,6 +241,12 @@ let ID = sequencer.register_fluidsynth (&mut synthesizer);
 event.set_source (-1); event.set_destination (ID);
 event.noteon (0, self.pitch, self.velocity);
 sequencer.send_at (&mut event, 0, 1);
+  let mut event = fluidsynth::event::Event::new ();
+event.set_source (-1); event.set_destination (ID);
+event.noteoff (0, self.pitch);
+sequencer.send_at (&mut event, (basics.duration *1000.0) as u32, 1);
+
+
 for _ in 0..(2.0*basics.duration* settings.getnum ("synth.sample-rate").unwrap () /settings.getint ("audio.period-size").unwrap () as f64) as i32 {renderer.process_block ();}
 }
 //the settings change above didn't work, for some reason, so the file is@" fluidsynth.wav"
