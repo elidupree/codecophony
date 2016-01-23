@@ -399,6 +399,8 @@ finish release 17 release 20
   let mut sequencer = fluidsynth::seq::Sequencer::new2 (0);
 let ID = sequencer.register_fluidsynth (&mut synthesizer);
   let mut renderer = fluidsynth::audio::FileRenderer::new (&mut synthesizer);
+  synthesizer.sfload ("/usr/share/sounds/sf2/FluidR3_GM.sf2", 1);
+  
   
   let mut event = fluidsynth::event::Event::new ();
 event.set_source (-1); event.set_destination (ID);
