@@ -393,7 +393,7 @@ finish release 17 release 20
   let mut settings = fluidsynth::settings::Settings::new ();
   settings.setstr ("audio.file.name", "test_render.wav");
   settings.setstr ("audio.file.type", "wav");
-    //settings.setnum 
+  settings.setnum ("synth.sample-rate", 44100.0);
   
   let mut synthesizer = fluidsynth::synth::Synth::new (&mut settings);
   let mut sequencer = fluidsynth::seq::Sequencer::new2 (0);
@@ -406,7 +406,7 @@ event.noteon (0, 64, 100);
 let now = sequencer.get_tick ();
 sequencer.send_at (&mut event, now, 1);
 
-for _ in 0..(settings.getnum ("synth.sample-rate").unwrap ()/settings.getnum ("audio.period-size").unwrap ()) as i32 {renderer.process_block ();}
+for _ in 0..(settings.getnum ("synth.sample-rate").unwrap () as i32/settings.getint ("audio.period-size").unwrap ()) {renderer.process_block ();}
   }
 
 
