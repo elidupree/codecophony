@@ -1,3 +1,4 @@
+extern crate fluidsynth;
 extern crate cpal;
 extern crate hound;
 
@@ -386,6 +387,26 @@ finish release 17 release 20
   let mut data_source = music_live.samples.iter().map(|sample| *sample as f32);
   for _whatever in 0..0 {
     println!("{}", data_source.next().unwrap());
+  }
+  
+  {
+  let mut settings = fluidsynth::settings::Settings::new ();
+  settings.setstr ("audio.file.name", "test_render.wav");
+  settings.setstr ("audio.file.type", "wav");
+    //settings.setnum 
+  
+  let mut synthesizer = fluidsynth::synth::Synth::new (&mut settings);
+  let mut sequencer = fluidsynth::seq::Sequencer::new2 (0);
+let ID = sequencer.register_fluidsynth (&mut synthesizer);
+  let mut renderer = fluidsynth::audio::FileRenderer::new (&mut synthesizer);
+  
+  let mut event = fluidsynth::event::Event::new ();
+event.set_source (-1); event.set_destination (ID);
+event.noteon (0, 64, 100);
+let now = sequencer.get_tick ();
+sequencer.send_at (&mut event, now, 1);
+
+for _ in 0..(settings.getnum ("synth.sample-rate").unwrap ()/settings.getnum ("audio.period-size").unwrap ()) as i32 {renderer.process_block ();}
   }
 
 
