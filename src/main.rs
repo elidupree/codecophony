@@ -211,6 +211,53 @@ impl Transposable for SineWave {
   }
 }
 
+#[derive (Clone)]
+struct MIDINote {
+pitch: i16,
+velocity: i16,
+//instrument:
+}
+impl Transposable for MIDINote {
+fn transpose (&mut self, amount: Semitones)->& mut Self {
+self.pitch += amount as i16; self
+}
+}
+impl Renderer for MIDINote {
+fn render (& self, basics: NoteBasics, sample_rate: Position)->Sequence {
+
+  let mut settings = fluidsynth::settings::Settings::new ();
+  settings.setstr ("audio.file.name", "test_render.wav");
+  settings.setstr ("audio.file.type", "wav");
+  settings.setnum ("synth.sample-rate", sample_rate as f64);
+  
+  let mut synthesizer = fluidsynth::synth::Synth::new (&mut settings);
+  let mut sequencer = fluidsynth::seq::Sequencer::new2 (0);
+let ID = sequencer.register_fluidsynth (&mut synthesizer);
+  let mut renderer = fluidsynth::audio::FileRenderer::new (&mut synthesizer);
+  synthesizer.sfload ("/usr/share/sounds/sf2/FluidR3_GM.sf2", 1);
+  
+  
+  let mut event = fluidsynth::event::Event::new ();
+event.set_source (-1); event.set_destination (ID);
+event.noteon (0, self.pitch, self.velocity);
+sequencer.send_at (&mut event, 0, 1);
+for _ in 0..(2.0*basics.duration* settings.getnum ("synth.sample-rate").unwrap () /settings.getint ("audio.period-size").unwrap () as f64) as i32 {renderer.process_block ();}
+//the settings change above didn't work, for some reason, so the file is@" fluidsynth.wav"
+let mut reader = hound::WavReader::open ("fluidsynth.wav").unwrap ();
+//hack: convert stereo to mono
+let mut samples = Vec::new ();
+let mut iterator =reader.samples::<i32> ().map (| result | result.unwrap ());
+while let Some (sample) = iterator.next () {
+samples.push ((sample + iterator.next ().unwrap ())/2);
+}
+    Sequence {
+      start: (basics.start * sample_rate as f64) as Position,
+      samples: samples,
+    }
+
+}
+}
+
 // TODO: take a less specific "collection of sequences" argument type
 fn merge(sequences: &Vec<Sequence>) -> Sequence {
   let mut minimum = Position::max_value();
@@ -346,11 +393,10 @@ fn main() {
 
 
   let manual = scrawl_notes(&|semitones| {
-                              SineWave {
-                                frequency: 220.0,
-                                amplitude: 4000.0,
+MIDINote {
+pitch: 57+ semitones as i16,
+velocity: 100,
                               }
-                              .transposed(semitones)
                             },
                             "
 12 and 15 and 19 5 8 step 0.5 5 8 10
@@ -387,29 +433,6 @@ finish release 17 release 20
   let mut data_source = music_live.samples.iter().map(|sample| *sample as f32);
   for _whatever in 0..0 {
     println!("{}", data_source.next().unwrap());
-  }
-  
-  {
-  let mut settings = fluidsynth::settings::Settings::new ();
-  settings.setstr ("audio.file.name", "test_render.wav");
-  settings.setstr ("audio.file.type", "wav");
-  settings.setnum ("synth.sample-rate", 44100.0);
-  
-  let mut synthesizer = fluidsynth::synth::Synth::new (&mut settings);
-  let mut sequencer = fluidsynth::seq::Sequencer::new2 (0);
-let ID = sequencer.register_fluidsynth (&mut synthesizer);
-  let mut renderer = fluidsynth::audio::FileRenderer::new (&mut synthesizer);
-  synthesizer.sfload ("/usr/share/sounds/sf2/FluidR3_GM.sf2", 1);
-  
-  
-  let mut event = fluidsynth::event::Event::new ();
-event.set_source (-1); event.set_destination (ID);
-event.noteon (0, 64, 100);
-let now = sequencer.get_tick ();
-assert! (now == 0);
-sequencer.send_at (&mut event, now, 1);
-sequencer.process (1000);
-for _ in 0..(settings.getnum ("synth.sample-rate").unwrap () as i32/settings.getint ("audio.period-size").unwrap ()) {renderer.process_block ();}
   }
 
 
