@@ -214,11 +214,12 @@ impl Transposable for SineWave {
 #[derive (Clone)]
 struct MIDIInstrument {
 channel: i32,
-program: i16,
+bank: i16,
+preset: i16,
 }
 impl MIDIInstrument {
-fn new (program: i16)->Self {MIDIInstrument {program: program, channel: 0}}
-fn percussion ()->Self {MIDIInstrument {program: 0, channel: 10}}
+fn new (program: i16)->Self {MIDIInstrument {bank: 0, preset: program, channel: 0}}
+fn percussion ()->Self {MIDIInstrument {bank: 0, preset: 0, channel: 10}}
 }
 
 #[derive (Clone)]
@@ -247,7 +248,10 @@ fn render (& self, basics: NoteBasics, sample_rate: Position)->Sequence {
   let mut sequencer = fluidsynth::seq::Sequencer::new2 (0);
 let ID = sequencer.register_fluidsynth (&mut synthesizer);
   let mut renderer = fluidsynth::audio::FileRenderer::new (&mut synthesizer);
-  synthesizer.sfload ("/usr/share/sounds/sf2/FluidR3_GM.sf2", 1);
+  
+  //sfload is supposed to return the sound font ID, but instead it returns a bool?
+  let not_font_ID = synthesizer.sfload ("/usr/share/sounds/sf2/FluidR3_GM.sf2", 1);
+  assert! (not_font_ID); let font_ID = 1;
   
   let mut send_event = | time, assign: & Fn (&mut fluidsynth::event::Event) | {
   
@@ -256,7 +260,7 @@ event.set_source (-1); event.set_destination (ID);
 assign (&mut event);
 sequencer.send_at (&mut event, time, 1);
   };
-  send_event (0, & | event | event.program_change (self.instrument.channel, self.instrument.program));
+  send_event (0, & | event | event.program_select (self.instrument.channel, font_ID, self.instrument.bank, self.instrument.preset));
   send_event (0,
 & | event | event.noteon (self.instrument.channel, self.pitch, self.velocity));
 send_event ((basics.duration *1000.0) as u32, & | event |
