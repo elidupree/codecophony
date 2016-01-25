@@ -388,12 +388,16 @@ _=> panic! (),
 struct MIDIInterpreter {
 
 prototype: MIDINote,
+velocity_adjustment: i16,
 command_in_progress: Option <String>,
 }
 
 impl InterpreterCaller <MIDINote> for MIDIInterpreter {
 fn create (&mut self, semitones: Semitones)->MIDINote {
-MIDINote {pitch: self.prototype.pitch + semitones as i16,..self.prototype.clone ()}
+let mut velocity = self.prototype.velocity;
+while self.velocity_adjustment >0 {self.velocity_adjustment -= 1; velocity = (velocity*2 +128)/3;}
+while self.velocity_adjustment <0 {self.velocity_adjustment += 1; velocity = (velocity*2)/3;}
+MIDINote {pitch: self.prototype.pitch + semitones as i16, velocity: velocity ,..self.prototype.clone ()}
 }
 }
 
@@ -401,6 +405,8 @@ impl MIDIInterpreter {
 fn interpret (&mut self, basics: &mut BasicInterpreter <MIDINote>,command: & str) {
 match self.command_in_progress.clone () {
 None => match command {
+"strong" => self.velocity_adjustment += 1,
+"quiet" => self.velocity_adjustment -= 1,
 "percussion" => self.prototype.instrument = MIDIInstrument::percussion (),
 parametric@"instrument" | parametric@"velocity" | parametric@"transpose" => self.command_in_progress = Some (parametric.to_string ()),
 other => basics.interpret (self, other),
@@ -420,7 +426,7 @@ self.command_in_progress = None;
 
 fn scrawl_MIDI_notes (scrawl: & str)->Notes <MIDINote> {
 let mut basics = BasicInterpreter:: <MIDINote>::default ();
-let mut specifics = MIDIInterpreter {prototype: MIDINote {pitch: 0, velocity: 64, instrument: MIDIInstrument::new (88)}, command_in_progress: None};
+let mut specifics = MIDIInterpreter {velocity_adjustment: 0, prototype: MIDINote {pitch: 0, velocity: 64, instrument: MIDIInstrument::new (88)}, command_in_progress: None};
 for command in scrawl.split_whitespace () {
 specifics.interpret (&mut basics, command);
 }
@@ -454,7 +460,7 @@ fn main() {
   let manual = scrawl_MIDI_notes(
                             "transpose 57 velocity 100 instrument 61
 12 and 15 and 19 5 8 step 0.5 5 8 10
-12 sustain 17 sustain 20 step \
+12 quiet sustain 17 quiet sustain 20 step \
                              1 5 step 0.5 7 step 2.5
 finish release 17 release 20
 ");
