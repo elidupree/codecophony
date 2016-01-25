@@ -455,7 +455,7 @@ fn main() {
                             "transpose 57 velocity 100 instrument 61
 12 and 15 and 19 5 8 step 0.5 5 8 10
 12 sustain 17 sustain 20 step \
-                             1 5 step 0.5 7 advance 2.5
+                             1 5 step 0.5 7 step 2.5
 finish release 17 release 20
 ");
   let notes = Notes::combining(&[manual.clone(),
