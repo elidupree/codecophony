@@ -249,9 +249,7 @@ fn render (& self, basics: NoteBasics, sample_rate: Position)->Sequence {
 let ID = sequencer.register_fluidsynth (&mut synthesizer);
   let mut renderer = fluidsynth::audio::FileRenderer::new (&mut synthesizer);
   
-  //sfload is supposed to return the sound font ID, but instead it returns a bool?
-  let not_font_ID = synthesizer.sfload ("/usr/share/sounds/sf2/FluidR3_GM.sf2", 1);
-  assert! (not_font_ID); let font_ID = 1;
+  let font_ID = synthesizer.sfload ("/usr/share/sounds/sf2/FluidR3_GM.sf2", 1).unwrap ();
   
   let mut send_event = | time, assign: & Fn (&mut fluidsynth::event::Event) | {
   
