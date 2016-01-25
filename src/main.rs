@@ -75,6 +75,10 @@ impl<Render: Renderer> std::ops::DerefMut for Notes<Render> {
     &mut self.data
   }
 }
+impl <Render: Renderer> Default for Notes <Render> {
+fn default ()->Self {Notes:: <Render> {data: Default::default ()}}
+}
+
 
 impl<Render: Renderer> Notes<Render> {
   fn new() -> Notes<Render> {
@@ -246,15 +250,15 @@ fn render (& self, basics: NoteBasics, sample_rate: Position)->Sequence {
   
   let mut synthesizer = fluidsynth::synth::Synth::new (&mut settings);
   let mut sequencer = fluidsynth::seq::Sequencer::new2 (0);
-let ID = sequencer.register_fluidsynth (&mut synthesizer);
+let sequencer_ID = sequencer.register_fluidsynth (&mut synthesizer);
   let mut renderer = fluidsynth::audio::FileRenderer::new (&mut synthesizer);
   
   let font_ID = synthesizer.sfload ("/usr/share/sounds/sf2/FluidR3_GM.sf2", 1).unwrap ();
   
-  let mut send_event = | time, assign: & Fn (&mut fluidsynth::event::Event) | {
+  let send_event = | time, assign: & Fn (&mut fluidsynth::event::Event) | {
   
   let mut event = fluidsynth::event::Event::new ();
-event.set_source (-1); event.set_destination (ID);
+event.set_source (-1); event.set_destination (sequencer_ID);
 assign (&mut event);
 sequencer.send_at (&mut event, time, 1);
   };
@@ -303,99 +307,129 @@ fn merge(sequences: &Vec<Sequence>) -> Sequence {
   }
 }
 
-fn interpret_scrawl <note_factory_type:FnMut (f64, f64, Semitones)> (note_factory: &mut note_factory_type, scrawl: &str) {
-  let mut now = 0.0f64;
-  let mut instructions = scrawl.split_whitespace();
-  #[derive (Clone, Copy)]
-  struct note_info {
-    beginning: f64,
-  }
-  let mut sustained_notes = HashMap::new();
-  let mut latest_notes = HashMap::new();
-  let mut step_size = 1.0f64;
-  let consume_number = |instructions: &mut std::str::SplitWhitespace| {
-    f64::from_str(instructions.next().unwrap()).unwrap()
-  };
-  let consume_semitones = |instructions: &mut std::str::SplitWhitespace| {
-    Semitones::from_str(instructions.next().unwrap()).unwrap()
-  };
-  let finish_note = |now, semitones, info: note_info, note_factory: &mut note_factory_type| {
-    note_factory(info.beginning, now, semitones);
-  };
-  let finish_notes = |now: &mut f64,
-                      step_size,
-                      latest_notes: &mut HashMap<Semitones, note_info>,
-                      note_factory: &mut note_factory_type| {
-    let last_begin = latest_notes.values().fold(-900000000.0f64, |max, info: &note_info| {
-      if info.beginning > max {
-        info.beginning
+
+//trait Interpreter
+
+
+struct BasicInterpreter <Render: Renderer > {
+notes: Notes <Render>,
+now: f64,
+step_size: f64,
+sustained_notes: HashMap <Semitones, Note <Render>>,
+latest_notes: HashMap <Semitones, Note <Render>>,
+command_in_progress: Option <String>,
+}
+
+
+
+trait InterpreterCaller <Render: Renderer> {
+fn create (&mut self, semitones: Semitones)->Render;
+}
+impl <Render: Renderer> Default for BasicInterpreter <Render> {
+fn default ()->Self {BasicInterpreter:: <Render> {now: 0.0, step_size: 1.0, notes: Default ::default (), sustained_notes: Default::default (), latest_notes: Default::default (), command_in_progress: None,}}
+}
+impl <Render: Renderer> BasicInterpreter <Render> {
+
+
+fn finish_note (& mut self, note: Note <Render>) {
+let mut note = note;
+note.basics.duration = self.now - note.basics.start;//note.set_end (self.now);
+      self.notes.push (note);
+}
+fn finish_notes (&mut self) {
+    let last_begin = self.latest_notes.values().fold(-900000000.0f64, |max, note: & Note <Render> | {
+      if note.basics.start> max {
+note.basics.start
       } else {
         max
       }
     });
-    let step_end = last_begin + step_size;
-    if step_end > *now {
-      *now = step_end
+    let step_end = last_begin + self.step_size;
+    if step_end > self.now {
+self.now = step_end
     };
 
-    for (semitones, info) in latest_notes.iter() {
-      finish_note(*now, *semitones, *info, note_factory);
+    for (_, note) in self.latest_notes.clone ().iter() {
+self.finish_note (note.clone ());
     }
-    latest_notes.clear();
-  };
-  let do_note = |now, semitones, container: &mut HashMap<Semitones, note_info>| {
-    container.insert(semitones, note_info { beginning: now });
-  };
-  loop {
-    match instructions.next() {
-      None => break,
-      Some(instruction) => {
-        match Semitones::from_str(instruction) {
-          Err(_) => {
-            match instruction {
-              "at" => {
-                let time = consume_number(&mut instructions);
-                if time < now {
-                  assert!(latest_notes.is_empty())
-                }
-                now = time;
-              }
-              "advance" => {
-                let time = consume_number(&mut instructions);
-                if time < 0.0 {
-                  assert!(latest_notes.is_empty())
-                }
-                now += time;
-              }
-              "and" => do_note(now, consume_semitones(&mut instructions), &mut latest_notes),
-              "sustain" => {
-                do_note(now,
-                        consume_semitones(&mut instructions),
-                        &mut sustained_notes)
-              }
-              "release" => {
-                let semitones = consume_semitones(&mut instructions);
-                finish_note(now,
-                            semitones,
-                            sustained_notes.remove(&semitones).unwrap(),
-                            note_factory);
-              }
-              "step" => step_size = consume_number(&mut instructions),
-              "finish" => finish_notes(&mut now, step_size, &mut latest_notes, note_factory),
-              _ => (),
-            }
-          }
-          Ok(semitones) => {
-            finish_notes(&mut now, step_size, &mut latest_notes, note_factory);
-            do_note(now, semitones, &mut latest_notes)
-          }
-        }
-      }
-    }
-  }
+self.latest_notes.clear ();
+
 }
 
-fn scrawl_notes<renderer_type: Renderer, Generator: Fn(Semitones) -> renderer_type>
+fn create_note <Caller: InterpreterCaller <Render>> (&mut self, caller: &mut Caller, semitones: Semitones)->Note <Render> {
+Note::<Render> {basics: NoteBasics {start: self.now, duration: 0.0}, renderer: caller.create (semitones)}
+}
+
+fn interpret <Caller: InterpreterCaller <Render>> (&mut self, caller: &mut Caller, command: & str) {
+match self.command_in_progress.clone () {
+
+None => match Semitones::from_str (command) {
+Ok (semitones) => {self.finish_notes (); let note = self.create_note (caller, semitones); self.latest_notes.insert (semitones, note);},
+Err (_) => match command {
+"finish" => self.finish_notes (),
+_=> self.command_in_progress = Some (command.to_string ()),
+}
+},
+Some (last_command) => {match &*last_command {
+"and" => {let semitones = Semitones::from_str (command).unwrap ();
+let note = self.create_note (caller, semitones); self.latest_notes.insert (semitones, note);},
+"sustain" => {let semitones = Semitones::from_str (command).unwrap (); let note = self.create_note (caller, semitones); self.sustained_notes.insert (semitones, note );},
+"release" => {let semitones = Semitones::from_str (command).unwrap (); let note = self.sustained_notes.remove (& semitones).unwrap (); self.finish_note (note);},
+"step" => {self.step_size = f64::from_str (command).unwrap ();},
+_=> panic! (),
+}; self.command_in_progress = None;}
+,
+
+}}
+
+
+}
+
+struct MIDIInterpreter {
+
+prototype: MIDINote,
+command_in_progress: Option <String>,
+}
+
+impl InterpreterCaller <MIDINote> for MIDIInterpreter {
+fn create (&mut self, semitones: Semitones)->MIDINote {
+MIDINote {pitch: self.prototype.pitch + semitones as i16,..self.prototype.clone ()}
+}
+}
+
+impl MIDIInterpreter {
+fn interpret (&mut self, basics: &mut BasicInterpreter <MIDINote>,command: & str) {
+match self.command_in_progress.clone () {
+None => match command {
+"percussion" => self.prototype.instrument = MIDIInstrument::percussion (),
+parametric@"instrument" | parametric@"velocity" | parametric@"transpose" => self.command_in_progress = Some (parametric.to_string ()),
+other => basics.interpret (self, other),
+},
+Some (last_command) => {
+match &*last_command {
+"instrument" => self.prototype.instrument = MIDIInstrument::new (i16::from_str (command).unwrap ()),
+"velocity" => self.prototype.velocity =i16::from_str (command).unwrap (),
+"transpose" => self.prototype.pitch =i16::from_str (command).unwrap (),
+_=> panic! (),
+};
+self.command_in_progress = None;
+}
+}
+}
+}
+
+fn scrawl_MIDI_notes (scrawl: & str)->Notes <MIDINote> {
+let mut basics = BasicInterpreter:: <MIDINote>::default ();
+let mut specifics = MIDIInterpreter {prototype: MIDINote {pitch: 0, velocity: 64, instrument: MIDIInstrument::new (88)}, command_in_progress: None};
+for command in scrawl.split_whitespace () {
+specifics.interpret (&mut basics, command);
+}
+basics.notes
+}
+
+
+
+/*fn scrawl_notes<renderer_type: Renderer, Generator: Fn(Semitones) -> renderer_type>
   (generator: &Generator,
    scrawl: &str)
    -> Notes<renderer_type> {
@@ -407,24 +441,18 @@ fn scrawl_notes<renderer_type: Renderer, Generator: Fn(Semitones) -> renderer_ty
                    },
                    scrawl);
   return notes;
-}
+}*/
 
 fn main() {
-  let endpoint = cpal::get_default_endpoint().unwrap();
+ /* let endpoint = cpal::get_default_endpoint().unwrap();
   let format = endpoint.get_supported_formats_list().unwrap().next().unwrap();
   let mut channel = cpal::Voice::new(&endpoint, &format).unwrap();
 
-  println!("sample rate is {}", format.samples_rate.0);
+  println!("sample rate is {}", format.samples_rate.0);*/
 
 
-  let manual = scrawl_notes(&|semitones| {
-MIDINote {
-pitch: 57+ semitones as i16,
-velocity: 100,
-instrument: MIDIInstrument::new (43),
-                              }
-                            },
-                            "
+  let manual = scrawl_MIDI_notes(
+                            "transpose 57 velocity 100 instrument 61
 12 and 15 and 19 5 8 step 0.5 5 8 10
 12 sustain 17 sustain 20 step \
                              1 5 step 0.5 7 advance 2.5
