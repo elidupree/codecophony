@@ -307,6 +307,38 @@ fn merge(sequences: &Vec<Sequence>) -> Sequence {
   }
 }
 
+mod optimizer {
+
+struct Note {
+original_frequency: f64,
+current_frequency: f64,
+neighbors: Vec<usize>,
+}
+
+struct Parameters {
+rounds: usize,
+}
+
+struct Optimizer <'lifetime> {
+notes: & 'lifetime mut Vec<Note>, parameters: Parameters
+}
+
+impl < 'lifetime>Optimizer < 'lifetime> {
+
+fn run (&mut self) {
+for _ in 0..self.parameters.rounds {
+let TODO = 0; self.optimize_note (TODO);
+}
+}
+
+fn optimize_note (&mut self, which: usize) {
+
+}
+}
+
+
+}
+
 
 //trait Interpreter
 
