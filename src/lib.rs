@@ -221,7 +221,8 @@ bank: i16,
 preset: i16,
 }
 impl MIDIInstrument {
-pub fn new (program: i16)->Self {MIDIInstrument {bank: 0, preset: program, channel: 0}}
+//offsets the program by one to use the same numbers as the General MIDI specification, which numbers the instruments from one rather than 0
+pub fn new (program: i16)->Self {MIDIInstrument {bank: 0, preset: program -1, channel: 0}}
 pub fn percussion ()->Self {MIDIInstrument {bank: 0, preset: 0, channel: 10}}
 }
 
@@ -231,9 +232,6 @@ pitch: i16,
 velocity: i16,
 instrument: MIDIInstrument,
 }
-/*impl Default for MIDINote {
-fn default ()->Self {MIDINote {pitch: 64, velocity: 64, MIDIInstrument {channel: 0, instrument: 0}}}
-}*/
 impl Transposable for MIDINote {
 fn transpose (&mut self, amount: Semitones)->& mut Self {
 self.pitch += amount as i16; self
