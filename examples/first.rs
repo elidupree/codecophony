@@ -1,5 +1,7 @@
-
+extern crate codecophony;
 extern crate hound;
+
+use codecophony::*;
 
 fn main() {
   let manual = scrawl_MIDI_notes(

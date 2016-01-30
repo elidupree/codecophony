@@ -1,24 +1,23 @@
 extern crate fluidsynth;
-extern crate cpal;
 extern crate hound;
 
 use std::cmp::{min, max};
 use std::collections::HashMap;
 use std::str::FromStr;
 
-type Position = i32;
-type Sample = i32;
-type Semitones = i32;
-const SEMITONE_RATIO: f64 = (1.0594631f64);
+pub type Position = i32;
+pub type Sample = i32;
+pub type Semitones = i32;
+pub const SEMITONE_RATIO: f64 = (1.0594631f64);
 
 #[derive (Clone)]
-struct Sequence {
+pub struct Sequence {
   start: Position,
-  samples: Vec<Sample>,
+  pub samples: Vec<Sample>,
 }
 
 #[derive (Clone, Copy)]
-struct NoteBasics {
+pub struct NoteBasics {
   start: f64,
   duration: f64,
 }
@@ -26,13 +25,13 @@ struct NoteBasics {
 // trait SequenceTransform<RendererType: Renderer> : Clone + Fn (&mut Sequence, &Note <RendererType>)->() {}
 
 #[derive (Clone)]
-struct Note<RendererType: Renderer> {
+pub struct Note<RendererType: Renderer> {
   basics: NoteBasics,
   renderer: RendererType, // sequence_transforms: Vec<Box <SequenceTransform <RendererType> >>,
 }
 
 impl<RendererType: Renderer> Note<RendererType> {
-  fn new(start: f64, duration: f64, renderer: RendererType) -> Note<RendererType> {
+  pub fn new(start: f64, duration: f64, renderer: RendererType) -> Note<RendererType> {
     Note::<RendererType> {
       basics: NoteBasics {
         start: start,
@@ -41,12 +40,12 @@ impl<RendererType: Renderer> Note<RendererType> {
       renderer: renderer, // , sequence_transforms: Vec::new (),
     }
   }
-  fn render(&self, sample_rate: Position) -> Sequence {
+  pub fn render(&self, sample_rate: Position) -> Sequence {
     self.renderer.render(self.basics, sample_rate)
   }
 }
 impl<Render: Renderer + Transposable> Transposable for Note<Render> {
-  fn transpose(&mut self, amount: Semitones) -> &mut Note<Render> {
+fn transpose(&mut self, amount: Semitones) -> &mut Note<Render> {
     self.renderer.transpose(amount);
     self
   }
@@ -61,7 +60,7 @@ impl<Render: Renderer> Scalable for Note<Render> {
 
 
 #[derive (Clone)]
-struct Notes<Render: Renderer> {
+pub struct Notes<Render: Renderer> {
   data: Vec<Note<Render>>,
 }
 impl<Render: Renderer> std::ops::Deref for Notes<Render> {
@@ -81,13 +80,13 @@ fn default ()->Self {Notes:: <Render> {data: Default::default ()}}
 
 
 impl<Render: Renderer> Notes<Render> {
-  fn new() -> Notes<Render> {
+  pub fn new() -> Notes<Render> {
     Notes::<Render> { data: Vec::new() }
   }
-  fn add(&mut self, other: &Notes<Render>) {
+  pub fn add(&mut self, other: &Notes<Render>) {
     self.extend(other.iter().map(|note| note.clone()))
   }
-  fn combining(parts: &[Self]) -> Self {
+  pub fn combining(parts: &[Self]) -> Self {
     let mut result = Self::new();
     for other in parts {
       result.add(other);
@@ -95,24 +94,24 @@ impl<Render: Renderer> Notes<Render> {
     result
   }
 
-  fn translate(&mut self, amount: f64) -> &mut Notes<Render> {
+  pub fn translate(&mut self, amount: f64) -> &mut Notes<Render> {
     for note in self.data.iter_mut() {
       note.basics.start += amount
     }
     self
   }
-  fn translated(&self, amount: f64) -> Notes<Render> {
+  pub fn translated(&self, amount: f64) -> Notes<Render> {
     let mut result = self.clone();
     result.translate(amount);
     result
   }
-  fn modify_renderers(&mut self, modifier: &Fn(&mut Render)) -> &mut Notes<Render> {
+  pub fn modify_renderers(&mut self, modifier: &Fn(&mut Render)) -> &mut Notes<Render> {
     for note in self.data.iter_mut() {
       modifier(&mut note.renderer)
     }
     self
   }
-  fn with_renderers(&self, modifier: &Fn(&mut Render)) -> Notes<Render> {
+  pub fn with_renderers(&self, modifier: &Fn(&mut Render)) -> Notes<Render> {
     let mut result = self.clone();
     result.modify_renderers(modifier);
     result
@@ -146,9 +145,9 @@ impl<Render: Renderer> Renderer for Notes<Render> {
 }
 
 
-trait Renderer: Clone {
-  fn render(&self, basics: NoteBasics, sample_rate: Position) -> Sequence;
-  fn render_default(&self, sample_rate: Position) -> Sequence {
+pub trait Renderer: Clone {
+   fn render(&self, basics: NoteBasics, sample_rate: Position) -> Sequence;
+   fn render_default(&self, sample_rate: Position) -> Sequence {
     self.render(NoteBasics {
                   start: 0.0,
                   duration: 0.0,
@@ -157,25 +156,25 @@ trait Renderer: Clone {
   }
 }
 
-trait Transposable: Clone {
-  fn transpose(&mut self, amount: Semitones) -> &mut Self;
+pub trait Transposable: Clone {
+    fn transpose(&mut self, amount: Semitones) -> &mut Self;
   fn transposed(&self, amount: Semitones) -> Self {
     let mut result = self.clone();
     result.transpose(amount);
     result
   }
 }
-trait Scalable: Clone {
-  fn scale(&mut self, amount: f64) -> &mut Self {
+pub trait Scalable: Clone {
+   fn scale(&mut self, amount: f64) -> &mut Self {
     self.scale_about(amount, 0.0)
   }
-  fn scaled(&self, amount: f64) -> Self {
+   fn scaled(&self, amount: f64) -> Self {
     let mut result = self.clone();
     result.scale(amount);
     result
   }
-  fn scale_about(&mut self, amount: f64, origin: f64) -> &mut Self;
-  fn scaled_about(&self, amount: f64, origin: f64) -> Self {
+   fn scale_about(&mut self, amount: f64, origin: f64) -> &mut Self;
+   fn scaled_about(&self, amount: f64, origin: f64) -> Self {
     let mut result = self.clone();
     result.scale_about(amount, origin);
     result
@@ -183,13 +182,13 @@ trait Scalable: Clone {
 }
 
 #[derive (Clone)]
-struct SineWave {
+pub struct SineWave {
   frequency: f64,
   amplitude: f64,
 }
 
 impl Renderer for SineWave {
-  fn render(&self, basics: NoteBasics, sample_rate: Position) -> Sequence {
+   fn render(&self, basics: NoteBasics, sample_rate: Position) -> Sequence {
     let mut samples: Vec<Sample> = Vec::new();
     let after = (basics.duration * sample_rate as f64) as Position;
     for time in 0..after {
@@ -209,25 +208,25 @@ impl Renderer for SineWave {
   }
 }
 impl Transposable for SineWave {
-  fn transpose(&mut self, amount: Semitones) -> &mut Self {
+   fn transpose(&mut self, amount: Semitones) -> &mut Self {
     self.frequency *= SEMITONE_RATIO.powi(amount);
     self
   }
 }
 
 #[derive (Clone)]
-struct MIDIInstrument {
+pub struct MIDIInstrument {
 channel: i32,
 bank: i16,
 preset: i16,
 }
 impl MIDIInstrument {
-fn new (program: i16)->Self {MIDIInstrument {bank: 0, preset: program, channel: 0}}
-fn percussion ()->Self {MIDIInstrument {bank: 0, preset: 0, channel: 10}}
+pub fn new (program: i16)->Self {MIDIInstrument {bank: 0, preset: program, channel: 0}}
+pub fn percussion ()->Self {MIDIInstrument {bank: 0, preset: 0, channel: 10}}
 }
 
 #[derive (Clone)]
-struct MIDINote {
+pub struct MIDINote {
 pitch: i16,
 velocity: i16,
 instrument: MIDIInstrument,
@@ -456,7 +455,7 @@ self.command_in_progress = None;
 }
 }
 
-fn scrawl_MIDI_notes (scrawl: & str)->Notes <MIDINote> {
+pub fn scrawl_MIDI_notes (scrawl: & str)->Notes <MIDINote> {
 let mut basics = BasicInterpreter:: <MIDINote>::default ();
 let mut specifics = MIDIInterpreter {velocity_adjustment: 0, prototype: MIDINote {pitch: 0, velocity: 64, instrument: MIDIInstrument::new (88)}, command_in_progress: None};
 for command in scrawl.split_whitespace () {
