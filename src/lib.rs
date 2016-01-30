@@ -264,7 +264,7 @@ sequencer.send_at (&mut event, time, 1);
   if !self.instrument.is_percussion () {send_event (0, & | event | event.program_select (self.instrument.channel, font_ID, self.instrument.bank, self.instrument.preset));}
   send_event (0,
 & | event | event.noteon (self.instrument.channel, self.pitch, self.velocity));
-if  !self.instrument.is percussion () {send_event ((basics.duration *1000.0) as u32, & | event |
+if  !self.instrument.is_percussion () {send_event ((basics.duration *1000.0) as u32, & | event |
 event.noteoff (self.instrument.channel, self.pitch));}
 
 //TODO: instead of just using twice the duration, specifically continue rendering until we get all zeros
