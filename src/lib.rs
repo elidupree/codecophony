@@ -220,10 +220,12 @@ channel: i32,
 bank: i16,
 preset: i16,
 }
+const PERCUSSION_CHANNEL:i32 = 9;
 impl MIDIInstrument {
 //offsets the program by one to use the same numbers as the General MIDI specification, which numbers the instruments from one rather than 0
 pub fn new (program: i16)->Self {MIDIInstrument {bank: 0, preset: program -1, channel: 0}}
-pub fn percussion ()->Self {MIDIInstrument {bank: 0, preset: 0, channel: 9}}
+pub fn percussion ()->Self {MIDIInstrument {bank: 0, preset: 0, channel: PERCUSSION_CHANNEL}}
+pub fn is_percussion (& self)->bool {self.channel == PERCUSSION_CHANNEL}
 }
 
 #[derive (Clone)]
@@ -259,11 +261,11 @@ event.set_source (-1); event.set_destination (sequencer_ID);
 assign (&mut event);
 sequencer.send_at (&mut event, time, 1);
   };
-  send_event (0, & | event | event.program_select (self.instrument.channel, font_ID, self.instrument.bank, self.instrument.preset));
+  if !self.instrument.is_percussion () {send_event (0, & | event | event.program_select (self.instrument.channel, font_ID, self.instrument.bank, self.instrument.preset));}
   send_event (0,
 & | event | event.noteon (self.instrument.channel, self.pitch, self.velocity));
-send_event ((basics.duration *1000.0) as u32, & | event |
-event.noteoff (self.instrument.channel, self.pitch));
+if  !self.instrument.is percussion () {send_event ((basics.duration *1000.0) as u32, & | event |
+event.noteoff (self.instrument.channel, self.pitch));}
 
 //TODO: instead of just using twice the duration, specifically continue rendering until we get all zeros
 for _ in 0..(2.0*basics.duration* settings.getnum ("synth.sample-rate").unwrap () /settings.getint ("audio.period-size").unwrap () as f64) as i32 {renderer.process_block ();}
