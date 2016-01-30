@@ -459,5 +459,6 @@ let mut specifics = MIDIInterpreter {velocity_adjustment: 0, prototype: MIDINote
 for command in scrawl.split_whitespace () {
 specifics.interpret (&mut basics, command);
 }
+basics.finish_notes ();
 basics.notes
 }
