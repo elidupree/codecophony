@@ -223,7 +223,7 @@ preset: i16,
 impl MIDIInstrument {
 //offsets the program by one to use the same numbers as the General MIDI specification, which numbers the instruments from one rather than 0
 pub fn new (program: i16)->Self {MIDIInstrument {bank: 0, preset: program -1, channel: 0}}
-pub fn percussion ()->Self {MIDIInstrument {bank: 0, preset: 0, channel: 10}}
+pub fn percussion ()->Self {MIDIInstrument {bank: 0, preset: 0, channel: 9}}
 }
 
 #[derive (Clone)]
