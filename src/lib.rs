@@ -407,6 +407,8 @@ let note = self.create_note (caller, semitones); self.latest_notes.insert (semit
 "sustain" => {let semitones = Semitones::from_str (command).unwrap (); let note = self.create_note (caller, semitones); self.sustained_notes.insert (semitones, note );},
 "release" => {match Semitones::from_str (command) {Ok(semitones) => {let note = self.sustained_notes.remove (& semitones).unwrap (); self.finish_note (note);}, Err(_) => {for (_, note) in self.sustained_notes.clone ().iter () {self.finish_note (note.clone ());} self.sustained_notes.clear ();}}},
 "step" => {self.step_size = f64::from_str (command).unwrap ();},
+"advance" => {let distance = f64::from_str (command).unwrap (); assert! (distance >= 0.0); self.now += distance;},
+"at" => {let time = f64::from_str (command).unwrap (); if time <self.now {self.finish_notes ();} self.now = time;},
 _=> panic! (),
 }; self.command_in_progress = None;}
 ,
