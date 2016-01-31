@@ -246,6 +246,7 @@ fn render (& self, basics: NoteBasics, sample_rate: Position)->Sequence {
   settings.setstr ("audio.file.name", "test_render.wav");
   settings.setstr ("audio.file.type", "wav");
   settings.setnum ("synth.sample-rate", sample_rate as f64);
+  settings.setnum ("synth.gain", 1.0);
   
   let mut synthesizer = fluidsynth::synth::Synth::new (&mut settings);
   let mut sequencer = fluidsynth::seq::Sequencer::new2 (0);
@@ -304,6 +305,14 @@ fn merge(sequences: &Vec<Sequence>) -> Sequence {
     start: minimum,
     samples: samples,
   }
+}
+
+pub fn enforce_maximum (sequence: &mut Sequence, forced_maximum: Sample) {
+let maximum = sequence.samples.iter ().fold (0, | maximum, sample | max (maximum, sample.abs ()));
+if maximum <= forced_maximum {return;}
+for sample in sequence.samples.iter_mut () {
+*sample = (*sample)*forced_maximum/maximum;
+}
 }
 
 mod optimizer {
