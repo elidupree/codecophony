@@ -12,14 +12,14 @@ pub const SEMITONE_RATIO: f64 = (1.0594631f64);
 
 #[derive (Clone)]
 pub struct Sequence {
-  start: Position,
+pub start: Position,
   pub samples: Vec<Sample>,
 }
 
 #[derive (Clone, Copy)]
 pub struct NoteBasics {
-  start: f64,
-  duration: f64,
+pub start: f64,
+  pub duration: f64,
 }
 
 // trait SequenceTransform<RendererType: Renderer> : Clone + Fn (&mut Sequence, &Note <RendererType>)->() {}
@@ -230,9 +230,9 @@ pub fn is_percussion (& self)->bool {self.channel == PERCUSSION_CHANNEL}
 
 #[derive (Clone)]
 pub struct MIDINote {
-pitch: i16,
-velocity: i16,
-instrument: MIDIInstrument,
+pub pitch: i16,
+pub velocity: i16,
+pub instrument: MIDIInstrument,
 }
 impl Transposable for MIDINote {
 fn transpose (&mut self, amount: Semitones)->& mut Self {
