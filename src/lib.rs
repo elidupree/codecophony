@@ -26,8 +26,8 @@ pub start: f64,
 
 #[derive (Clone)]
 pub struct Note<RendererType: Renderer> {
-  basics: NoteBasics,
-  renderer: RendererType, // sequence_transforms: Vec<Box <SequenceTransform <RendererType> >>,
+  pub basics: NoteBasics,
+  pub renderer: RendererType, // sequence_transforms: Vec<Box <SequenceTransform <RendererType> >>,
 }
 
 impl<RendererType: Renderer> Note<RendererType> {
