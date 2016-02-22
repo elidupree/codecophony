@@ -1,9 +1,11 @@
+extern crate rand;
 extern crate fluidsynth;
 extern crate hound;
 
 use std::cmp::{min, max};
 use std::collections::HashMap;
 use std::str::FromStr;
+use rand::{Rng};
 
 pub type Position = i32;
 pub type Sample = i32;
@@ -333,13 +335,20 @@ notes: & 'lifetime mut Vec<Note>, parameters: Parameters
 
 impl < 'lifetime>Optimizer < 'lifetime> {
 
-fn run (&mut self) {
+fn run <Generator: Rng> (&mut self, generator: &mut Generator) {
 for _ in 0..self.parameters.rounds {
-let TODO = 0; self.optimize_note (TODO);
+let which = generator.gen_range (0, self. notes.len());
+self.optimize_note (which);
 }
 }
 
 fn optimize_note (&mut self, which: usize) {
+let subject = self.notes.get (which).unwrap ();
+let mut score = 0.0;
+
+for neighbor in subject.neighbors {
+
+}
 
 }
 }

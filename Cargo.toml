@@ -8,3 +8,4 @@ git = "https://github.com/elidupree/rust-fluidsynth"
 
 [dependencies]
 hound = "1.1.0"
+rand = "0.3"
