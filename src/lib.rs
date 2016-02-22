@@ -5,7 +5,7 @@ extern crate hound;
 use std::cmp::{min, max};
 use std::collections::HashMap;
 use std::str::FromStr;
-use rand::Rng;
+
 
 pub type Position = i32;
 pub type Sample = i32;
@@ -352,6 +352,8 @@ pub fn enforce_maximum(sequence: &mut Sequence, forced_maximum: Sample) {
 
 mod optimizer {
 
+use rand::Rng;
+
   struct Note {
     original_frequency: f64,
     current_frequency: f64,
@@ -379,7 +381,7 @@ mod optimizer {
       let subject = self.notes.get(which).unwrap();
       let mut score = 0.0;
 
-      for neighbor in subject.neighbors {
+      for neighbor in subject.neighbors.iter () {
 
       }
 
