@@ -269,9 +269,9 @@ thread_local! {
   static SYNTHESIZERS: RefCell<HashMap<Position, Fluid>> = RefCell::new (HashMap::new());
 }
 fn with_fluid <Return, F: FnOnce (&mut Fluid)->Return> (sample_rate: Position, callback: F)->Return {
-  SYNTHESIZERS.with (| synthesizers | {
+  SYNTHESIZERS.with (move | synthesizers | {
     let mut guard = synthesizers.borrow_mut();
-    let mut synthesizer = guard.entry (sample_rate).or_insert_with (| | {
+    let mut synthesizer = guard.entry (sample_rate).or_insert_with (move | | {
       let mut settings = fluidsynth::settings::Settings::new();
       settings.setnum("synth.sample-rate", sample_rate as f64);
       settings.setnum("synth.gain", 1.0);
