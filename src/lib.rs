@@ -5,6 +5,7 @@ extern crate hound;
 use std::cmp::{min, max};
 use std::collections::HashMap;
 use std::str::FromStr;
+use std::cell::RefCell;
 
 
 pub type Position = i32;
@@ -221,13 +222,13 @@ impl Transposable for SineWave {
 #[derive (Clone)]
 pub struct MIDIInstrument {
   channel: i32,
-  bank: i16,
-  preset: i16,
+  bank: u32,
+  preset: u32,
 }
 const PERCUSSION_CHANNEL: i32 = 9;
 impl MIDIInstrument {
   // offsets the program by one to use the same numbers as the General MIDI specification, which numbers the instruments from one rather than 0
-  pub fn new(program: i16) -> Self {
+  pub fn new(program: u32) -> Self {
     MIDIInstrument {
       bank: 0,
       preset: program - 1,
@@ -248,75 +249,74 @@ impl MIDIInstrument {
 
 #[derive (Clone)]
 pub struct MIDINote {
-  pub pitch: i16,
-  pub velocity: i16,
+  pub pitch: i32,
+  pub velocity: i32,
   pub instrument: MIDIInstrument,
 }
 impl Transposable for MIDINote {
   fn transpose(&mut self, amount: Semitones) -> &mut Self {
-    self.pitch += amount as i16;
+    self.pitch += amount as i32;
     self
   }
 }
-impl Renderer for MIDINote {
-  fn render(&self, basics: NoteBasics, sample_rate: Position) -> Sequence {
-    {
+
+struct Fluid {
+  synth: fluidsynth::synth::Synth,
+  font_id: u32,
+}
+thread_local! {
+  static SYNTHESIZERS: RefCell<HashMap<Position, Fluid>> = RefCell::new (HashMap::new());
+}
+fn with_fluid <Return, F: FnOnce (&mut Fluid)->Return> (sample_rate: Position, callback: F)->Return {
+  SYNTHESIZERS.with (| synthesizers | {
+    let mut guard = synthesizers.borrow_mut();
+    let mut synthesizer = guard.entry (sample_rate).or_insert_with (| | {
       let mut settings = fluidsynth::settings::Settings::new();
-      settings.setstr("audio.file.name", "test_render.wav");
-      settings.setstr("audio.file.type", "wav");
       settings.setnum("synth.sample-rate", sample_rate as f64);
       settings.setnum("synth.gain", 1.0);
-
       let mut synthesizer = fluidsynth::synth::Synth::new(&mut settings);
-      let mut sequencer = fluidsynth::seq::Sequencer::new2(0);
-      let sequencer_ID = sequencer.register_fluidsynth(&mut synthesizer);
-      let mut renderer = fluidsynth::audio::FileRenderer::new(&mut synthesizer);
+      let font_id = synthesizer.sfload("/usr/share/sounds/sf2/FluidR3_GM.sf2", 1).unwrap();
+      Fluid {synth: synthesizer, font_id: font_id}
+    });
+    
+    callback (synthesizer)
+  })
+}
 
-      let font_ID = synthesizer.sfload("/usr/share/sounds/sf2/FluidR3_GM.sf2", 1).unwrap();
-
-      let send_event = |time, assign: &Fn(&mut fluidsynth::event::Event)| {
-
-        let mut event = fluidsynth::event::Event::new();
-        event.set_source(-1);
-        event.set_destination(sequencer_ID);
-        assign(&mut event);
-        sequencer.send_at(&mut event, time, 1);
-      };
+impl Renderer for MIDINote {
+  fn render(&self, basics: NoteBasics, sample_rate: Position) -> Sequence {
+    with_fluid (sample_rate, | fluid | {
       if !self.instrument.is_percussion() {
-        send_event(0,
-                   &|event| {
-                     event.program_select(self.instrument.channel,
-                                          font_ID,
+        fluid.synth.program_select(self.instrument.channel, fluid.font_id,
                                           self.instrument.bank,
-                                          self.instrument.preset)
-                   });
+                                          self.instrument.preset);
       }
-      send_event(0,
-                 &|event| event.noteon(self.instrument.channel, self.pitch, self.velocity));
+      fluid.synth.noteon(self.instrument.channel, self.pitch, self.velocity);
+      let mut left = Vec::new();
+      let mut right = Vec::new();
+      assert! (fluid.synth.write_f32 ((basics.duration*(sample_rate as f64)) as usize, &mut left, &mut right));
       if !self.instrument.is_percussion() {
-        send_event((basics.duration * 1000.0) as u32,
-                   &|event| event.noteoff(self.instrument.channel, self.pitch));
+        fluid.synth.noteoff(self.instrument.channel, self.pitch);
       }
-
-      // TODO: instead of just using twice the duration, specifically continue rendering until we get all zeros
-      for _ in 0..(2.0 * basics.duration * settings.getnum("synth.sample-rate").unwrap() /
-                   settings.getint("audio.period-size").unwrap() as f64) as i32 {
-        renderer.process_block();
+      for index in 0..1000 {
+        let duration =(1+sample_rate/10) as usize;
+        assert! (fluid.synth.write_f32 (duration, &mut left, &mut right));
+        // continue rendering until we observe silence
+        if left.iter().rev().take (duration).chain (right.iter().rev().take (duration)).all(| sample | (sample.abs() < 0.000001)) {
+          break;
+        }
+        assert!(index <900);
       }
-    }
-    // the settings change above didn't work, for some reason, so the file is@" fluidsynth.wav"
-    let mut reader = hound::WavReader::open("fluidsynth.wav").unwrap();
-    // hack: convert stereo to mono
-    let mut samples = Vec::new();
-    let mut iterator = reader.samples::<i32>().map(|result| result.unwrap());
-    while let Some(sample) = iterator.next() {
-      samples.push((sample + iterator.next().unwrap()) / 2);
-    }
-    Sequence {
-      start: (basics.start * sample_rate as f64) as Position,
-      samples: samples,
-    }
-
+      Sequence {
+        start: (basics.start * sample_rate as f64) as Position,
+        samples: left.into_iter().zip (right.into_iter()).map (| (first, second) | 
+        // hack: convert stereo to mono
+        (
+          first*2f32.powi(15)
+          + second*2f32.powi(15)
+        ).round() as Sample).collect()
+      }
+    })
   }
 }
 
@@ -546,7 +546,7 @@ impl InterpreterCaller<MIDINote> for MIDIInterpreter {
       velocity = (velocity * 2) / 3;
     }
     MIDINote {
-      pitch: self.prototype.pitch + semitones as i16,
+      pitch: self.prototype.pitch + semitones as i32,
       velocity: velocity,
       ..self.prototype.clone()
     }
@@ -570,10 +570,10 @@ impl MIDIInterpreter {
       Some(last_command) => {
         match &*last_command {
           "instrument" => {
-            self.prototype.instrument = MIDIInstrument::new(i16::from_str(command).unwrap())
+            self.prototype.instrument = MIDIInstrument::new(u32::from_str(command).unwrap())
           }
-          "velocity" => self.prototype.velocity = i16::from_str(command).unwrap(),
-          "transpose" => self.prototype.pitch = i16::from_str(command).unwrap(),
+          "velocity" => self.prototype.velocity = i32::from_str(command).unwrap(),
+          "transpose" => self.prototype.pitch = i32::from_str(command).unwrap(),
           _ => panic!(),
         };
         self.command_in_progress = None;
