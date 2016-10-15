@@ -261,6 +261,7 @@ impl Transposable for MIDINote {
 }
 
 struct Fluid {
+  settings: fluidsynth::settings::Settings,
   synth: fluidsynth::synth::Synth,
   font_id: u32,
 }
@@ -276,7 +277,7 @@ fn with_fluid <Return, F: FnOnce (&mut Fluid)->Return> (sample_rate: Position, c
       settings.setnum("synth.gain", 1.0);
       let mut synthesizer = fluidsynth::synth::Synth::new(&mut settings);
       let font_id = synthesizer.sfload("/usr/share/sounds/sf2/FluidR3_GM.sf2", 1).unwrap();
-      Fluid {synth: synthesizer, font_id: font_id}
+      Fluid {settings: settings, synth: synthesizer, font_id: font_id}
     });
     
     callback (synthesizer)
