@@ -273,8 +273,6 @@ fn with_fluid <Return, F: FnOnce (&mut Fluid)->Return> (sample_rate: Position, c
     let mut guard = synthesizers.borrow_mut();
     let mut synthesizer = guard.entry (sample_rate).or_insert_with (move | | {
       let mut settings = fluidsynth::settings::Settings::new();
-      settings.setstr("audio.file.name", "test_render.wav");
-      settings.setstr("audio.file.type", "wav");
       settings.setnum("synth.sample-rate", sample_rate as f64);
       settings.setnum("synth.gain", 1.0);
       let mut synthesizer = fluidsynth::synth::Synth::new(&mut settings);
