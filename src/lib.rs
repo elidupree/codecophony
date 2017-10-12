@@ -65,8 +65,8 @@ impl<Frame: dsp::Frame, N: Note<Frame>, I: Iterator<Item = N> + Clone> Note<Fram
   }
 }
 
-pub trait Displacable {
-  fn displace(&mut self, distance: NoteTime);
+pub trait Nudgable {
+  fn nudge(&mut self, distance: NoteTime);
 }
 
 pub trait Dilatable {
@@ -120,9 +120,9 @@ impl<Frame: dsp::Frame, Frames: Borrow<[Frame]>> Note<Frame> for PositionedSeque
   }
 }
 
-impl<Frame: dsp::Frame, Frames: Borrow<[Frame]>> Displacable for PositionedSequence<Frame, Frames>
+impl<Frame: dsp::Frame, Frames: Borrow<[Frame]>> Nudgable for PositionedSequence<Frame, Frames>
 {
-  fn displace(&mut self, distance: NoteTime) {
+  fn nudge(&mut self, distance: NoteTime) {
     // The distance may not be an exact multiple of the frame time. 
     // By default, it seems better to slightly misplace the resulting data than to resample it.
     self.start += (distance*self.sample_hz).round() as FrameTime;
@@ -194,8 +194,8 @@ impl<Frame: dsp::Frame> Note<Frame> for SineWave
   }
 }
 
-impl Displacable for SineWave {
-  fn displace(&mut self, distance: NoteTime) {
+impl Nudgable for SineWave {
+  fn nudge(&mut self, distance: NoteTime) {
     self.start += distance;
   }
 }
@@ -257,8 +257,8 @@ pub struct MIDINote {
   pub instrument: MIDIInstrument,
 }
 
-impl Displacable for MIDINote {
-  fn displace(&mut self, distance: NoteTime) {
+impl Nudgable for MIDINote {
+  fn nudge(&mut self, distance: NoteTime) {
     self.start += distance;
   }
 }
