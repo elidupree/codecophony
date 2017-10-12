@@ -139,7 +139,7 @@ impl<Frame: dsp::Frame, Frames: Borrow<[Frame]>> Nudgable for PositionedSequence
 impl<Frame: dsp::Frame, Frames: Borrow<[Frame]>> PositionedSequence<Frame, Frames>
   where <Frame::Sample as Sample>::Float: dsp::FromSample<f64> {
   /// do some boring old linear resampling.
-  fn interpolate_sample (&self, time: f64) -> Frame {
+  pub fn interpolate_sample (&self, time: f64) -> Frame {
     let relative_time = time*self.sample_hz - self.start as f64;
     let previous_index = relative_time.trunc() as usize;
     let previous = self.frames.borrow().get (previous_index).cloned().unwrap_or (Frame::equilibrium());
@@ -151,7 +151,7 @@ impl<Frame: dsp::Frame, Frames: Borrow<[Frame]>> PositionedSequence<Frame, Frame
 
 impl<Frame: dsp::Frame, Frames: Borrow<[Frame]>> PositionedSequence<Frame, Frames>
   where Frames: FromIterator<Frame> + BorrowMut<[Frame]> {
-  fn rendered_from <N: Renderable<Frame>> (note: N, sample_hz: f64)->Self {
+  pub fn rendered_from <N: Renderable<Frame>> (note: N, sample_hz: f64)->Self {
     let earliest = (note.start()*sample_hz).ceil() as FrameTime;
     let latest = (note.end()*sample_hz).floor() as FrameTime;
     let length = max(0,latest+1-earliest) as usize;
