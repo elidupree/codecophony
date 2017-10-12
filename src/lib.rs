@@ -104,7 +104,7 @@ impl<Frame: dsp::Frame, Frames: Borrow<[Frame]>> Note<Frame> for PositionedSeque
       // if the sample rates are different, resample it
       for (index, value_mut) in buffer.iter_mut().enumerate() {
         let time = (start as f64 + index as f64) * sample_hz;
-        *value_mut = self.resample(time);
+        *value_mut = self.interpolate_sample (time);
       }
     }
   }
@@ -121,7 +121,7 @@ impl Displacable for SineWave {
 impl<Frame: dsp::Frame, Frames: Borrow<[Frame]>> PositionedSequence<Frame, Frames>
   where <Frame::Sample as Sample>::Float: dsp::FromSample<f64> {
   /// do some boring old linear resampling.
-  fn resample(&self, time: f64) -> Frame {
+  fn interpolate_sample (&self, time: f64) -> Frame {
     let relative_time = time*self.sample_hz - self.start as f64;
     let previous_index = relative_time.trunc() as usize;
     let previous = self.frames.borrow().get (previous_index).cloned().unwrap_or (Frame::equilibrium());
