@@ -1,3 +1,5 @@
+#![feature (specialization)]
+
 extern crate rand;
 extern crate fluidsynth;
 extern crate hound;
@@ -8,6 +10,8 @@ use std::cmp::{min, max};
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::cell::RefCell;
+use std::borrow::Borrow;
+use std::marker::PhantomData;
 
 use dsp::Sample;
 use ordered_float::NotNaN;
@@ -37,6 +41,12 @@ pub trait PitchShiftable {
   fn pitch_shift(&mut self, frequency_ratio: f64);
 }
 
+impl <T: PitchShiftable> Transposable for T {
+  default fn transpose(&mut self, amount: Semitones) {
+    self.pitch_shift(SEMITONE_RATIO.powi(amount));
+  }
+}
+
 pub trait Scalable {
   fn scale(&mut self, amount: f64) {
     self.scale_about(amount, 0.0)
@@ -46,25 +56,43 @@ pub trait Scalable {
 
 
 #[derive (Clone)]
-pub struct PositionedSequence<Frame: dsp::Frame> {
+pub struct PositionedSequence<Frame: dsp::Frame, Frames: Borrow<[Frame]>> {
   pub start: FrameTime,
   pub sample_hz: f64,
-  pub frames: Vec<Frame>,
+  pub frames: Frames,
+  _marker: PhantomData<Frame>,
 }
-impl<Frame: dsp::Frame> Note<Frame> for PositionedSequence<Frame> {
+impl<Frame: dsp::Frame, Frames: Borrow<[Frame]>> Note<Frame> for PositionedSequence<Frame, Frames>
+  where <Frame::Sample as Sample>::Float: dsp::FromSample<f64> {
   fn start (&self)->NoteTime {self.start as NoteTime / self.sample_hz}
-  fn end (&self)->NoteTime {(self.start + self.frames.len() as FrameTime-1) as NoteTime / self.sample_hz}
+  fn end (&self)->NoteTime {(self.start + self.frames.borrow().len() as FrameTime-1) as NoteTime / self.sample_hz}
   fn render(&self, buffer: &mut [Frame], start: FrameTime, sample_hz: f64) {
     if sample_hz == self.sample_hz {
       for (index, value_mut) in buffer.iter_mut().enumerate() {
         let my_index = (start + index as FrameTime - self.start) as usize;
-        *value_mut = self.frames.get(my_index).cloned().unwrap_or(Frame::equilibrium());
+        *value_mut = self.frames.borrow().get(my_index).cloned().unwrap_or(Frame::equilibrium());
       }
     }
     else {
-      unimplemented!()
       // if the sample rates are different, resample it
+      for (index, value_mut) in buffer.iter_mut().enumerate() {
+        let time = (start as f64 + index as f64) * sample_hz;
+        *value_mut = self.resample(time);
+      }
     }
+  }
+}
+
+impl<Frame: dsp::Frame, Frames: Borrow<[Frame]>> PositionedSequence<Frame, Frames>
+  where <Frame::Sample as Sample>::Float: dsp::FromSample<f64> {
+  /// do some boring old linear resampling.
+  fn resample(&self, time: f64) -> Frame {
+    let relative_time = time*self.sample_hz - self.start as f64;
+    let previous_index = relative_time.trunc() as usize;
+    let previous = self.frames.borrow().get (previous_index).cloned().unwrap_or (Frame::equilibrium());
+    let next = self.frames.borrow().get (previous_index.wrapping_add(1)).cloned().unwrap_or (Frame::equilibrium());
+    let factor = relative_time.fract();
+    previous.scale_amp(Sample::from_sample(1.0-factor)).add_amp(next.scale_amp(Sample::from_sample(factor)).to_signed_frame())
   }
 }
 
@@ -101,11 +129,22 @@ impl<Frame: dsp::Frame> Note<Frame> for SineWave
     }
   }
 }
-impl Transposable for SineWave {
-  fn transpose(&mut self, amount: Semitones) {
-    self.frequency *= SEMITONE_RATIO.powi(amount);
+impl PitchShiftable for SineWave {
+  fn pitch_shift(&mut self, frequency_ratio: f64) {
+    self.frequency *= frequency_ratio;
   }
 }
+impl Pitched for SineWave {
+  fn frequency(&self)->f64 {self.frequency}
+}
+impl Scalable for SineWave {
+  fn scale_about(&mut self, amount: f64, origin: f64) {
+    self.start = origin + (self.start-origin)*amount;
+    self.duration *= amount;
+  }
+}
+
+
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
 pub struct MIDIInstrument {
