@@ -1,10 +1,19 @@
-#![feature (specialization)]
+#![feature (specialization, iterator_step_by)]
 
 extern crate rand;
 extern crate fluidsynth;
 extern crate hound;
 extern crate dsp;
 extern crate ordered_float;
+#[macro_use]
+extern crate lazy_static;
+
+macro_rules! printlnerr(
+    ($($arg:tt)*) => { {use std::io::Write;
+        let r = writeln!(&mut ::std::io::stderr(), $($arg)*);
+        r.expect("failed printing to stderr");
+    } }
+);
 
 use std::cmp::{min, max};
 use std::collections::HashMap;
@@ -21,7 +30,8 @@ use ordered_float::{NotNaN, OrderedFloat};
 pub type FrameTime = i32;
 pub type NoteTime = f64;
 pub type Semitones = i32;
-pub const SEMITONE_RATIO: f64 = (1.0594631f64);
+pub const SEMITONE_RATIO: f64 = 1.0594631f64;
+pub const JUST_NOTICEABLE_FREQUENCY_RATIO: f64 = 1.006f64;
 
 
 pub trait Note<Frame: dsp::Frame> {
@@ -110,7 +120,8 @@ impl<Frame: dsp::Frame, Frames: Borrow<[Frame]>> Note<Frame> for PositionedSeque
   }
 }
 
-impl Displacable for SineWave {
+impl<Frame: dsp::Frame, Frames: Borrow<[Frame]>> Displacable for PositionedSequence<Frame, Frames>
+{
   fn displace(&mut self, distance: NoteTime) {
     // The distance may not be an exact multiple of the frame time. 
     // By default, it seems better to slightly misplace the resulting data than to resample it.
@@ -254,7 +265,7 @@ impl Displacable for MIDINote {
 
 impl Dilatable for MIDINote {
   fn dilate(&mut self, amount: f64, origin: f64) {
-    self.start = origin + (self.start-origin)*amount;
+    self.start = NotNaN::new(origin + (self.start.into_inner()-origin)*amount).unwrap();
     self.duration *= amount;
   }
 }
@@ -289,6 +300,8 @@ fn with_fluid <Return, F: FnOnce (&mut Fluid)->Return> (sample_hz: f64, callback
     callback (synthesizer)
   })
 }
+
+
 
 impl<Frame: dsp::Frame> Note<Frame> for MIDINote 
     where Frame::Sample: dsp::FromSample<f32> {
@@ -355,46 +368,7 @@ pub fn enforce_maximum<Frame: dsp::Frame<Sample = i32>>(sequence: &mut [Frame], 
   }
 }
 
-mod optimizer {
-
-use rand::Rng;
-
-  struct Note {
-    original_frequency: f64,
-    current_frequency: f64,
-    neighbors: Vec<usize>,
-  }
-
-  struct Parameters {
-    rounds: usize,
-  }
-
-  struct Optimizer<'lifetime> {
-    notes: &'lifetime mut Vec<Note>,
-    parameters: Parameters,
-  }
-
-  impl<'lifetime> Optimizer<'lifetime> {
-    fn run<Generator: Rng>(&mut self, generator: &mut Generator) {
-      for _ in 0..self.parameters.rounds {
-        let which = generator.gen_range(0, self.notes.len());
-        self.optimize_note(which);
-      }
-    }
-
-    fn optimize_note(&mut self, which: usize) {
-      let subject = self.notes.get(which).unwrap();
-      let mut score = 0.0;
-
-      for neighbor in subject.neighbors.iter () {
-
-      }
-
-    }
-  }
-
-
-}
+pub mod interval_optimizer; 
 
 
 // trait Interpreter
