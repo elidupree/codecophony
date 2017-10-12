@@ -3,9 +3,14 @@ name = "codecophony"
 version = "0.1.0"
 authors = ["Eli Dupree <vcs@elidupree.com>"]
 
-[dependencies.fluidsynth]
-git = "https://github.com/elidupree/rust-fluidsynth"
-
 [dependencies]
 hound = "1.1.0"
 rand = "0.3"
+dsp-chain = "0.13.1"
+
+[dependencies.fluidsynth]
+git = "https://github.com/elidupree/rust-fluidsynth"
+
+[dependencies.ordered-float]
+version = "0.2"
+features = ["serde"]

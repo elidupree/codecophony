@@ -1,225 +1,113 @@
 extern crate rand;
 extern crate fluidsynth;
 extern crate hound;
+extern crate dsp;
+extern crate ordered_float;
 
 use std::cmp::{min, max};
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::cell::RefCell;
 
+use dsp::Sample;
+use ordered_float::NotNaN;
 
-pub type Position = i32;
-pub type Sample = i32;
+
+pub type FrameTime = i32;
+pub type NoteTime = f64;
 pub type Semitones = i32;
 pub const SEMITONE_RATIO: f64 = (1.0594631f64);
 
-#[derive (Clone)]
-pub struct Sequence {
-  pub start: Position,
-  pub samples: Vec<Sample>,
+
+pub trait Note<Frame: dsp::Frame> {
+  fn start (&self)->NoteTime;
+  fn end (&self)->NoteTime;
+  fn render (&self, buffer: &mut [Frame], start: FrameTime, sample_hz: f64);
 }
 
-#[derive (Clone, Copy)]
-pub struct NoteBasics {
-  pub start: f64,
-  pub duration: f64,
+pub trait Transposable {
+  fn transpose(&mut self, amount: Semitones);
 }
 
-// trait SequenceTransform<RendererType: Renderer> : Clone + Fn (&mut Sequence, &Note <RendererType>)->() {}
-
-#[derive (Clone)]
-pub struct Note<RendererType: Renderer> {
-  pub basics: NoteBasics,
-  pub renderer: RendererType, // sequence_transforms: Vec<Box <SequenceTransform <RendererType> >>,
+pub trait Pitched {
+  fn frequency(&self)->f64;
 }
 
-impl<RendererType: Renderer> Note<RendererType> {
-  pub fn new(start: f64, duration: f64, renderer: RendererType) -> Note<RendererType> {
-    Note::<RendererType> {
-      basics: NoteBasics {
-        start: start,
-        duration: duration,
-      },
-      renderer: renderer, // , sequence_transforms: Vec::new (),
-    }
-  }
-  pub fn render(&self, sample_rate: Position) -> Sequence {
-    self.renderer.render(self.basics, sample_rate)
-  }
-}
-impl<Render: Renderer + Transposable> Transposable for Note<Render> {
-  fn transpose(&mut self, amount: Semitones) -> &mut Note<Render> {
-    self.renderer.transpose(amount);
-    self
-  }
-}
-impl<Render: Renderer> Scalable for Note<Render> {
-  fn scale_about(&mut self, amount: f64, origin: f64) -> &mut Note<Render> {
-    self.basics.start = origin + (self.basics.start - origin) * amount;
-    self.basics.duration *= amount;
-    self
-  }
+pub trait PitchShiftable {
+  fn pitch_shift(&mut self, frequency_ratio: f64);
 }
 
-
-#[derive (Clone)]
-pub struct Notes<Render: Renderer> {
-  data: Vec<Note<Render>>,
-}
-impl<Render: Renderer> std::ops::Deref for Notes<Render> {
-  type Target =Vec< Note <Render>>;
-  fn deref(&self) -> &Vec<Note<Render>> {
-    &self.data
-  }
-}
-impl<Render: Renderer> std::ops::DerefMut for Notes<Render> {
-  fn deref_mut(&mut self) -> &mut Vec<Note<Render>> {
-    &mut self.data
-  }
-}
-impl<Render: Renderer> Default for Notes<Render> {
-  fn default() -> Self {
-    Notes::<Render> { data: Default::default() }
-  }
-}
-
-
-impl<Render: Renderer> Notes<Render> {
-  pub fn new() -> Notes<Render> {
-    Notes::<Render> { data: Vec::new() }
-  }
-  pub fn add(&mut self, other: &Notes<Render>) {
-    self.extend(other.iter().map(|note| note.clone()))
-  }
-  pub fn combining(parts: &[Self]) -> Self {
-    let mut result = Self::new();
-    for other in parts {
-      result.add(other);
-    }
-    result
-  }
-
-  pub fn translate(&mut self, amount: f64) -> &mut Notes<Render> {
-    for note in self.data.iter_mut() {
-      note.basics.start += amount
-    }
-    self
-  }
-  pub fn translated(&self, amount: f64) -> Notes<Render> {
-    let mut result = self.clone();
-    result.translate(amount);
-    result
-  }
-  pub fn modify_renderers(&mut self, modifier: &Fn(&mut Render)) -> &mut Notes<Render> {
-    for note in self.data.iter_mut() {
-      modifier(&mut note.renderer)
-    }
-    self
-  }
-  pub fn with_renderers(&self, modifier: &Fn(&mut Render)) -> Notes<Render> {
-    let mut result = self.clone();
-    result.modify_renderers(modifier);
-    result
-  }
-}
-impl<Render: Renderer + Transposable> Transposable for Notes<Render> {
-  fn transpose(&mut self, amount: Semitones) -> &mut Notes<Render> {
-    for note in self.data.iter_mut() {
-      note.transpose(amount);
-    }
-    self
-  }
-}
-
-impl<Render: Renderer> Scalable for Notes<Render> {
-  fn scale_about(&mut self, amount: f64, origin: f64) -> &mut Notes<Render> {
-    for note in self.data.iter_mut() {
-      note.scale_about(amount, origin);
-    }
-    self
-  }
-}
-
-impl<Render: Renderer> Renderer for Notes<Render> {
-  fn render(&self, basics: NoteBasics, sample_rate: Position) -> Sequence {
-    let sequences: Vec<Sequence> = self.iter().map(|note| note.render(sample_rate)).collect();
-    let mut result = merge(&sequences);
-    result.start += (basics.start * sample_rate as f64) as Position;
-    result
-  }
-}
-
-
-pub trait Renderer: Clone {
-  fn render(&self, basics: NoteBasics, sample_rate: Position) -> Sequence;
-  fn render_default(&self, sample_rate: Position) -> Sequence {
-    self.render(NoteBasics {
-                  start: 0.0,
-                  duration: 0.0,
-                },
-                sample_rate)
-  }
-}
-
-pub trait Transposable: Clone {
-  fn transpose(&mut self, amount: Semitones) -> &mut Self;
-  fn transposed(&self, amount: Semitones) -> Self {
-    let mut result = self.clone();
-    result.transpose(amount);
-    result
-  }
-}
-pub trait Scalable: Clone {
-  fn scale(&mut self, amount: f64) -> &mut Self {
+pub trait Scalable {
+  fn scale(&mut self, amount: f64) {
     self.scale_about(amount, 0.0)
   }
-  fn scaled(&self, amount: f64) -> Self {
-    let mut result = self.clone();
-    result.scale(amount);
-    result
-  }
-  fn scale_about(&mut self, amount: f64, origin: f64) -> &mut Self;
-  fn scaled_about(&self, amount: f64, origin: f64) -> Self {
-    let mut result = self.clone();
-    result.scale_about(amount, origin);
-    result
-  }
+  fn scale_about(&mut self, amount: f64, origin: f64);
 }
+
 
 #[derive (Clone)]
-pub struct SineWave {
-  frequency: f64,
-  amplitude: f64,
+pub struct PositionedSequence<Frame: dsp::Frame> {
+  pub start: FrameTime,
+  pub sample_hz: f64,
+  pub frames: Vec<Frame>,
+}
+impl<Frame: dsp::Frame> Note<Frame> for PositionedSequence<Frame> {
+  fn start (&self)->NoteTime {self.start as NoteTime / self.sample_hz}
+  fn end (&self)->NoteTime {(self.start + self.frames.len() as FrameTime-1) as NoteTime / self.sample_hz}
+  fn render(&self, buffer: &mut [Frame], start: FrameTime, sample_hz: f64) {
+    if sample_hz == self.sample_hz {
+      for (index, value_mut) in buffer.iter_mut().enumerate() {
+        let my_index = (start + index as FrameTime - self.start) as usize;
+        *value_mut = self.frames.get(my_index).cloned().unwrap_or(Frame::equilibrium());
+      }
+    }
+    else {
+      unimplemented!()
+      // if the sample rates are different, resample it
+    }
+  }
 }
 
-impl Renderer for SineWave {
-  fn render(&self, basics: NoteBasics, sample_rate: Position) -> Sequence {
-    let mut samples: Vec<Sample> = Vec::new();
-    let after = (basics.duration * sample_rate as f64) as Position;
-    for time in 0..after {
-      let mut sample = (self.amplitude *
-                        (self.frequency * time as f64 * (std::f64::consts::PI * 2.0) /
-                         sample_rate as f64)
-                          .sin()) as Sample;
-      if after - time < 20 {
-        sample = sample * (after - time) / 20;
-      }
-      samples.push(sample);
-    }
-    Sequence {
-      start: (basics.start * sample_rate as f64) as Position,
-      samples: samples,
+  
+
+#[derive (Clone, Debug)]
+pub struct SineWave {
+  pub start: NoteTime,
+  pub duration: NoteTime,
+  pub frequency: f64,
+  pub amplitude: f64,
+}
+
+impl SineWave {
+  fn value(&self, time: NoteTime)->NoteTime {
+    if time < self.start || time > self.start+self.duration { return 0.0; }
+    let envelope_time = if self.duration<1.0 {self.duration*0.05} else {0.05};
+    let envelope = if time < self.start + envelope_time {(time-self.start) / envelope_time}
+      else if time > self.start+self.duration - envelope_time {(self.start+self.duration-time) / envelope_time}
+      else {1.0};
+    self.amplitude * (self.frequency * time * (std::f64::consts::PI * 2.0)).sin()
+  }
+}
+
+impl<Frame: dsp::Frame> Note<Frame> for SineWave
+    where Frame::Sample: dsp::FromSample<f64> {
+  fn start (&self)->NoteTime {self.start}
+  fn end (&self)->NoteTime {self.start+self.duration}
+  fn render(&self, buffer: &mut [Frame], start: FrameTime, sample_hz: f64) {
+    for (index, value_mut) in buffer.iter_mut().enumerate() {
+      let time = (start + index as FrameTime) as f64/sample_hz;
+      let value = Frame::Sample::from_sample(self.value (time));
+      *value_mut = Frame::from_fn(|_| value);
     }
   }
 }
 impl Transposable for SineWave {
-  fn transpose(&mut self, amount: Semitones) -> &mut Self {
+  fn transpose(&mut self, amount: Semitones) {
     self.frequency *= SEMITONE_RATIO.powi(amount);
-    self
   }
 }
 
-#[derive (Clone)]
+#[derive (Clone, PartialEq, Eq, Hash, Debug)]
 pub struct MIDIInstrument {
   channel: i32,
   bank: u32,
@@ -247,16 +135,17 @@ impl MIDIInstrument {
   }
 }
 
-#[derive (Clone)]
+#[derive (Clone, PartialEq, Eq, Hash, Debug)]
 pub struct MIDINote {
+  pub start: NotNaN<NoteTime>,
+  pub duration: NotNaN<NoteTime>,
   pub pitch: i32,
   pub velocity: i32,
   pub instrument: MIDIInstrument,
 }
 impl Transposable for MIDINote {
-  fn transpose(&mut self, amount: Semitones) -> &mut Self {
+  fn transpose(&mut self, amount: Semitones) {
     self.pitch += amount as i32;
-    self
   }
 }
 
@@ -264,65 +153,81 @@ struct Fluid {
   settings: fluidsynth::settings::Settings,
   synth: fluidsynth::synth::Synth,
   font_id: u32,
+  notes: HashMap<MIDINote, [Vec<f32>;2]>,
 }
 thread_local! {
-  static SYNTHESIZERS: RefCell<HashMap<Position, Fluid>> = RefCell::new (HashMap::new());
+  static SYNTHESIZERS: RefCell<HashMap<NotNaN<f64>, Fluid>> = RefCell::new (HashMap::new());
 }
-fn with_fluid <Return, F: FnOnce (&mut Fluid)->Return> (sample_rate: Position, callback: F)->Return {
+fn with_fluid <Return, F: FnOnce (&mut Fluid)->Return> (sample_hz: f64, callback: F)->Return {
   SYNTHESIZERS.with (move | synthesizers | {
     let mut guard = synthesizers.borrow_mut();
-    let mut synthesizer = guard.entry (sample_rate).or_insert_with (move | | {
+    let mut synthesizer = guard.entry (NotNaN::new(sample_hz).unwrap()).or_insert_with (move | | {
       let mut settings = fluidsynth::settings::Settings::new();
-      settings.setnum("synth.sample-rate", sample_rate as f64);
+      settings.setnum("synth.sample-rate", sample_hz);
       settings.setnum("synth.gain", 1.0);
       let mut synthesizer = fluidsynth::synth::Synth::new(&mut settings);
       let font_id = synthesizer.sfload("/usr/share/sounds/sf2/FluidR3_GM.sf2", 1).unwrap();
-      Fluid {settings: settings, synth: synthesizer, font_id: font_id}
+      Fluid {settings: settings, synth: synthesizer, font_id: font_id, notes: HashMap::new()}
     });
     
     callback (synthesizer)
   })
 }
 
-impl Renderer for MIDINote {
-  fn render(&self, basics: NoteBasics, sample_rate: Position) -> Sequence {
-    with_fluid (sample_rate, | fluid | {
-      if !self.instrument.is_percussion() {
-        fluid.synth.program_select(self.instrument.channel, fluid.font_id,
-                                          self.instrument.bank,
-                                          self.instrument.preset);
-      }
-      fluid.synth.noteon(self.instrument.channel, self.pitch, self.velocity);
-      let mut left = Vec::new();
-      let mut right = Vec::new();
-      assert! (fluid.synth.write_f32 ((basics.duration*(sample_rate as f64)) as usize, &mut left, &mut right));
-      if !self.instrument.is_percussion() {
-        fluid.synth.noteoff(self.instrument.channel, self.pitch);
-      }
-      for index in 0..1000 {
-        let duration =(1+sample_rate/10) as usize;
-        assert! (fluid.synth.write_f32 (duration, &mut left, &mut right));
-        // continue rendering until we observe silence
-        if left.iter().rev().take (duration).chain (right.iter().rev().take (duration)).all(| sample | (sample.abs() < 0.000001)) {
-          break;
+impl<Frame: dsp::Frame> Note<Frame> for MIDINote 
+    where Frame::Sample: dsp::FromSample<f32> {
+  fn start (&self)->NoteTime {self.start.into_inner()}
+  fn end (&self)->NoteTime {self.start.into_inner()+self.duration.into_inner()*2.0}
+  fn render(&self, buffer: &mut [Frame], start: FrameTime, sample_hz: f64) {
+    with_fluid (sample_hz, | fluid | {
+      let entry_index = MIDINote {start:NotNaN::new(0.0).unwrap(), .. self.clone()};
+      let channels = {
+      let synth = &mut fluid.synth;
+      let font_id = fluid.font_id;
+      fluid.notes.entry (entry_index).or_insert_with(|| {
+        if !self.instrument.is_percussion() {
+          synth.program_select(self.instrument.channel, font_id,
+                                            self.instrument.bank,
+                                            self.instrument.preset);
         }
-        assert!(index <900);
-      }
-      Sequence {
-        start: (basics.start * sample_rate as f64) as Position,
-        samples: left.into_iter().zip (right.into_iter()).map (| (first, second) | 
-        // hack: convert stereo to mono
-        (
-          first*2f32.powi(15)
-          + second*2f32.powi(15)
-        ).round() as Sample).collect()
+        synth.noteon(self.instrument.channel, self.pitch, self.velocity);
+        let mut left = Vec::new();
+        let mut right = Vec::new();
+        assert! (synth.write_f32 ((self.duration.into_inner()*sample_hz) as usize, &mut left, &mut right));
+        if !self.instrument.is_percussion() {
+          synth.noteoff(self.instrument.channel, self.pitch);
+        }
+        for index in 0..1000 {
+          let duration =(1.0+sample_hz/10.0) as usize;
+          assert! (synth.write_f32 (duration, &mut left, &mut right));
+          // continue rendering until we observe silence
+          if left.iter().rev().take (duration).chain (right.iter().rev().take (duration)).all(| sample | (sample.abs() < 0.000001)) {
+            break;
+          }
+          assert!(index <900);
+        }
+        [left, right]
+      })};
+      
+      let rounded_note_start = (self.start.into_inner()*sample_hz) as FrameTime;
+      for (index, value_mut) in buffer.iter_mut().enumerate() {
+        let rendered_index = ((index as FrameTime + start) - rounded_note_start) as usize;
+        let value = Frame::Sample::from_sample(if let Some(left) = channels[0].get(rendered_index) {
+          let right = channels[1].get(rendered_index).unwrap();
+          // hack: convert stereo to mono
+          (left + right)*0.5
+        }
+        else {
+          0.0
+        });
+        *value_mut = Frame::from_fn(|_| value);
       }
     })
   }
 }
 
 // TODO: take a less specific "collection of sequences" argument type
-fn merge(sequences: &Vec<Sequence>) -> Sequence {
+/*fn merge(sequences: &Vec<Sequence>) -> Sequence {
   let mut minimum = Position::max_value();
   let mut maximum = Position::min_value();
   for sequence in sequences {
@@ -339,15 +244,18 @@ fn merge(sequences: &Vec<Sequence>) -> Sequence {
     start: minimum,
     samples: samples,
   }
-}
+}*/
 
-pub fn enforce_maximum(sequence: &mut Sequence, forced_maximum: Sample) {
-  let maximum = sequence.samples.iter().fold(0, |maximum, sample| max(maximum, sample.abs()));
+pub fn enforce_maximum<Frame: dsp::Frame<Sample = i32>>(sequence: &mut [Frame], forced_maximum: i32) {
+  let maximum = match sequence.iter().flat_map (| frame | frame.channels()).map (| sample | sample.abs()).max() {
+    None => return,
+    Some(a) => a,
+  };
   if maximum <= forced_maximum {
     return;
   }
-  for sample in sequence.samples.iter_mut() {
-    *sample = (*sample) * forced_maximum / maximum;
+  for frame in sequence.iter_mut() {
+    *frame = frame.map(|sample| (sample * forced_maximum * 2 + maximum) / maximum*2);
   }
 }
 
@@ -395,9 +303,9 @@ use rand::Rng;
 
 // trait Interpreter
 
-
+/*
 struct BasicInterpreter<Render: Renderer> {
-  notes: Notes<Render>,
+  notes: Vec<Render>,
   now: f64,
   step_size: f64,
   sustained_notes: HashMap<Semitones, Note<Render>>,
@@ -583,7 +491,7 @@ impl MIDIInterpreter {
   }
 }
 
-pub fn scrawl_MIDI_notes(scrawl: &str) -> Notes<MIDINote> {
+pub fn scrawl_MIDI_notes(scrawl: &str) -> Vec<MIDINote> {
   let mut basics = BasicInterpreter::<MIDINote>::default();
   let mut specifics = MIDIInterpreter {
     velocity_adjustment: 0,
@@ -600,3 +508,5 @@ pub fn scrawl_MIDI_notes(scrawl: &str) -> Notes<MIDINote> {
   basics.finish_notes();
   basics.notes
 }
+
+*/
