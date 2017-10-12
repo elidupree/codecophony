@@ -10,11 +10,12 @@ use std::cmp::{min, max};
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::cell::RefCell;
-use std::borrow::Borrow;
+use std::borrow::{Borrow, BorrowMut};
 use std::marker::PhantomData;
+use std::iter::{self, FromIterator};
 
 use dsp::Sample;
-use ordered_float::NotNaN;
+use ordered_float::{NotNaN, OrderedFloat};
 
 
 pub type FrameTime = i32;
@@ -93,6 +94,42 @@ impl<Frame: dsp::Frame, Frames: Borrow<[Frame]>> PositionedSequence<Frame, Frame
     let next = self.frames.borrow().get (previous_index.wrapping_add(1)).cloned().unwrap_or (Frame::equilibrium());
     let factor = relative_time.fract();
     previous.scale_amp(Sample::from_sample(1.0-factor)).add_amp(next.scale_amp(Sample::from_sample(factor)).to_signed_frame())
+  }
+}
+
+impl<Frame: dsp::Frame, Frames: Borrow<[Frame]>> PositionedSequence<Frame, Frames>
+  where Frames: FromIterator<Frame> + BorrowMut<[Frame]> {
+  fn rendered_from_iter <I: Iterator + Clone> (iterator: I, sample_hz: f64)->Self where I::Item: Note<Frame> {
+    let earliest = match iterator.clone().map (| note | OrderedFloat(note.start())).max() {
+      None => return PositionedSequence {
+        start: 0,
+        sample_hz,
+        frames: iter::empty().collect(),
+        _marker: PhantomData,
+      },
+      Some(a)=>a.0,
+    };
+    let latest   = iterator.clone().map (| note | OrderedFloat(note.end())).min().unwrap().0;
+    
+    let earliest = (earliest*sample_hz).ceil() as FrameTime;
+    let latest = (latest*sample_hz).floor() as FrameTime;
+    let length = max(0,latest+1-earliest) as usize;
+    let mut frames: Frames = iter::repeat(Frame::equilibrium()).take(length).collect();
+    
+    for note in iterator {
+      let start = (note.start()*sample_hz).ceil() as FrameTime;
+      let end = (note.end()*sample_hz).floor() as FrameTime;
+      if end+1 > start {
+        note.render(&mut frames.borrow_mut()[(start-earliest) as usize .. (end-earliest) as usize], start, sample_hz);
+      }
+    }
+    
+    PositionedSequence {
+      start: earliest,
+      sample_hz,
+      frames,
+      _marker: PhantomData,
+    }
   }
 }
 
@@ -264,26 +301,6 @@ impl<Frame: dsp::Frame> Note<Frame> for MIDINote
     })
   }
 }
-
-// TODO: take a less specific "collection of sequences" argument type
-/*fn merge(sequences: &Vec<Sequence>) -> Sequence {
-  let mut minimum = Position::max_value();
-  let mut maximum = Position::min_value();
-  for sequence in sequences {
-    minimum = min(minimum, sequence.start);
-    maximum = max(maximum, sequence.start + sequence.samples.len() as Position);
-  }
-  let mut samples: Vec<Sample> = vec! [0; (maximum - minimum) as usize];
-  for sequence in sequences {
-    for (index, sample) in sequence.samples.iter().enumerate() {
-      samples[(sequence.start - minimum) as usize + index] += *sample;
-    }
-  }
-  Sequence {
-    start: minimum,
-    samples: samples,
-  }
-}*/
 
 pub fn enforce_maximum<Frame: dsp::Frame<Sample = i32>>(sequence: &mut [Frame], forced_maximum: i32) {
   let maximum = match sequence.iter().flat_map (| frame | frame.channels()).map (| sample | sample.abs()).max() {
