@@ -30,6 +30,31 @@ pub trait Note<Frame: dsp::Frame> {
   fn render (&self, buffer: &mut [Frame], start: FrameTime, sample_hz: f64);
 }
 
+impl<Frame: dsp::Frame, N: Note<Frame>, I: Iterator<Item = N> + Clone> Note<Frame> for I {
+  fn start (&self)->NoteTime {
+    match self.clone().map (| note | OrderedFloat(note.start())).min() {
+      None => 1.0,
+      Some(a)=>a.0,
+    }
+  }
+  fn end (&self)->NoteTime {
+    match self.clone().map (| note | OrderedFloat(note.end())).max() {
+      None => 0.0,
+      Some(a)=>a.0,
+    }
+  }
+  fn render(&self, buffer: &mut [Frame], start: FrameTime, sample_hz: f64) {
+    for note in self.clone() {
+      let afterend = start + buffer.len() as FrameTime;
+      let note_start = max(start, (note.start()*sample_hz).ceil() as FrameTime);
+      let note_afterend = min(afterend, (note.end()*sample_hz).floor() as FrameTime + 1);
+      if note_afterend > note_start {
+        note.render(&mut buffer[(note_start-start) as usize .. (note_afterend-start) as usize], start, sample_hz);
+      }
+    }
+  }
+}
+
 pub trait Transposable {
   fn transpose(&mut self, amount: Semitones);
 }
@@ -99,31 +124,13 @@ impl<Frame: dsp::Frame, Frames: Borrow<[Frame]>> PositionedSequence<Frame, Frame
 
 impl<Frame: dsp::Frame, Frames: Borrow<[Frame]>> PositionedSequence<Frame, Frames>
   where Frames: FromIterator<Frame> + BorrowMut<[Frame]> {
-  fn rendered_from_iter <I: Iterator + Clone> (iterator: I, sample_hz: f64)->Self where I::Item: Note<Frame> {
-    let earliest = match iterator.clone().map (| note | OrderedFloat(note.start())).max() {
-      None => return PositionedSequence {
-        start: 0,
-        sample_hz,
-        frames: iter::empty().collect(),
-        _marker: PhantomData,
-      },
-      Some(a)=>a.0,
-    };
-    let latest   = iterator.clone().map (| note | OrderedFloat(note.end())).min().unwrap().0;
-    
-    let earliest = (earliest*sample_hz).ceil() as FrameTime;
-    let latest = (latest*sample_hz).floor() as FrameTime;
+  fn rendered_from <N: Note<Frame>> (note: N, sample_hz: f64)->Self {
+    let earliest = (note.start()*sample_hz).ceil() as FrameTime;
+    let latest = (note.end()*sample_hz).floor() as FrameTime;
     let length = max(0,latest+1-earliest) as usize;
     let mut frames: Frames = iter::repeat(Frame::equilibrium()).take(length).collect();
-    
-    for note in iterator {
-      let start = (note.start()*sample_hz).ceil() as FrameTime;
-      let end = (note.end()*sample_hz).floor() as FrameTime;
-      if end+1 > start {
-        note.render(&mut frames.borrow_mut()[(start-earliest) as usize .. (end-earliest) as usize], start, sample_hz);
-      }
-    }
-    
+    note.render(frames.borrow_mut(), earliest, sample_hz);
+
     PositionedSequence {
       start: earliest,
       sample_hz,
