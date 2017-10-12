@@ -34,13 +34,16 @@ pub const SEMITONE_RATIO: f64 = 1.0594631f64;
 pub const JUST_NOTICEABLE_FREQUENCY_RATIO: f64 = 1.006f64;
 
 
-pub trait Note<Frame: dsp::Frame> {
+pub trait Windowed {
   fn start (&self)->NoteTime;
   fn end (&self)->NoteTime;
+}
+pub trait Renderable<Frame: dsp::Frame>: Windowed {
   fn render (&self, buffer: &mut [Frame], start: FrameTime, sample_hz: f64);
 }
 
-impl<Frame: dsp::Frame, N: Note<Frame>, I: Iterator<Item = N> + Clone> Note<Frame> for I {
+
+impl<'a, N: Windowed + 'a, I: Iterator<Item = &'a N> + Clone> Windowed for I {
   fn start (&self)->NoteTime {
     match self.clone().map (| note | OrderedFloat(note.start())).min() {
       None => 1.0,
@@ -53,6 +56,8 @@ impl<Frame: dsp::Frame, N: Note<Frame>, I: Iterator<Item = N> + Clone> Note<Fram
       Some(a)=>a.0,
     }
   }
+}
+impl<'a, Frame: dsp::Frame, N: Renderable<Frame> + 'a, I: Iterator<Item = &'a N> + Clone> Renderable<Frame> for I {
   fn render(&self, buffer: &mut [Frame], start: FrameTime, sample_hz: f64) {
     for note in self.clone() {
       let afterend = start + buffer.len() as FrameTime;
@@ -99,10 +104,12 @@ pub struct PositionedSequence<Frame: dsp::Frame, Frames: Borrow<[Frame]>> {
   pub frames: Frames,
   _marker: PhantomData<Frame>,
 }
-impl<Frame: dsp::Frame, Frames: Borrow<[Frame]>> Note<Frame> for PositionedSequence<Frame, Frames>
-  where <Frame::Sample as Sample>::Float: dsp::FromSample<f64> {
+impl<Frame: dsp::Frame, Frames: Borrow<[Frame]>> Windowed for PositionedSequence<Frame, Frames> {
   fn start (&self)->NoteTime {self.start as NoteTime / self.sample_hz}
   fn end (&self)->NoteTime {(self.start + self.frames.borrow().len() as FrameTime-1) as NoteTime / self.sample_hz}
+}
+impl<Frame: dsp::Frame, Frames: Borrow<[Frame]>> Renderable<Frame> for PositionedSequence<Frame, Frames>
+  where <Frame::Sample as Sample>::Float: dsp::FromSample<f64> {
   fn render(&self, buffer: &mut [Frame], start: FrameTime, sample_hz: f64) {
     if sample_hz == self.sample_hz {
       for (index, value_mut) in buffer.iter_mut().enumerate() {
@@ -144,7 +151,7 @@ impl<Frame: dsp::Frame, Frames: Borrow<[Frame]>> PositionedSequence<Frame, Frame
 
 impl<Frame: dsp::Frame, Frames: Borrow<[Frame]>> PositionedSequence<Frame, Frames>
   where Frames: FromIterator<Frame> + BorrowMut<[Frame]> {
-  fn rendered_from <N: Note<Frame>> (note: N, sample_hz: f64)->Self {
+  fn rendered_from <N: Renderable<Frame>> (note: N, sample_hz: f64)->Self {
     let earliest = (note.start()*sample_hz).ceil() as FrameTime;
     let latest = (note.end()*sample_hz).floor() as FrameTime;
     let length = max(0,latest+1-earliest) as usize;
@@ -181,10 +188,12 @@ impl SineWave {
   }
 }
 
-impl<Frame: dsp::Frame> Note<Frame> for SineWave
-    where Frame::Sample: dsp::FromSample<f64> {
+impl Windowed for SineWave {
   fn start (&self)->NoteTime {self.start}
   fn end (&self)->NoteTime {self.start+self.duration}
+}
+impl<Frame: dsp::Frame> Renderable<Frame> for SineWave
+    where Frame::Sample: dsp::FromSample<f64> {
   fn render(&self, buffer: &mut [Frame], start: FrameTime, sample_hz: f64) {
     for (index, value_mut) in buffer.iter_mut().enumerate() {
       let time = (start + index as FrameTime) as f64/sample_hz;
@@ -301,12 +310,12 @@ fn with_fluid <Return, F: FnOnce (&mut Fluid)->Return> (sample_hz: f64, callback
   })
 }
 
-
-
-impl<Frame: dsp::Frame> Note<Frame> for MIDINote 
-    where Frame::Sample: dsp::FromSample<f32> {
+impl Windowed for MIDINote {
   fn start (&self)->NoteTime {self.start.into_inner()}
   fn end (&self)->NoteTime {self.start.into_inner()+self.duration.into_inner()*2.0}
+}
+impl<Frame: dsp::Frame> Renderable<Frame> for MIDINote 
+    where Frame::Sample: dsp::FromSample<f32> {
   fn render(&self, buffer: &mut [Frame], start: FrameTime, sample_hz: f64) {
     with_fluid (sample_hz, | fluid | {
       let entry_index = MIDINote {start:NotNaN::new(0.0).unwrap(), .. self.clone()};
