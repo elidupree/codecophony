@@ -64,7 +64,7 @@ impl<'a, Frame: dsp::Frame, N: Renderable<Frame> + 'a, I: Iterator<Item = &'a N>
       let note_start = max(start, (note.start()*sample_hz).ceil() as FrameTime);
       let note_afterend = min(afterend, (note.end()*sample_hz).floor() as FrameTime + 1);
       if note_afterend > note_start {
-        note.render(&mut buffer[(note_start-start) as usize .. (note_afterend-start) as usize], start, sample_hz);
+        note.render(&mut buffer[(note_start-start) as usize .. (note_afterend-start) as usize], note_start, sample_hz);
       }
     }
   }
