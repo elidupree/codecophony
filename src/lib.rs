@@ -179,12 +179,20 @@ pub struct SineWave {
 
 impl SineWave {
   fn value(&self, time: NoteTime)->NoteTime {
-    if time < self.start || time > self.start+self.duration { return 0.0; }
+    let start = self.start;
+    let end = self.end();
+    if time < start || time > end { return 0.0; }
     let envelope_time = if self.duration<1.0 {self.duration*0.05} else {0.05};
-    let envelope = if time < self.start + envelope_time {(time-self.start) / envelope_time}
-      else if time > self.start+self.duration - envelope_time {(self.start+self.duration-time) / envelope_time}
+    let envelope =
+      if time < start + envelope_time {
+        (time-start) / envelope_time
+      }
+      else if time > end - envelope_time {
+        (end-time) / envelope_time
+      }
       else {1.0};
-    self.amplitude * (self.frequency * time * (std::f64::consts::PI * 2.0)).sin()
+    printlnerr!("{:?}", envelope);
+    self.amplitude * envelope * (self.frequency * time * (std::f64::consts::PI * 2.0)).sin()
   }
 }
 
