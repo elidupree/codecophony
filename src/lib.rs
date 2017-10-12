@@ -191,7 +191,7 @@ impl SineWave {
         (end-time) / envelope_time
       }
       else {1.0};
-    printlnerr!("{:?}", envelope);
+    //printlnerr!("{:?}", envelope);
     self.amplitude * envelope * (self.frequency * time * (std::f64::consts::PI * 2.0)).sin()
   }
 }
