@@ -107,14 +107,14 @@ impl<Frame: dsp::Frame, Frames: Borrow<[Frame]>> Note<Frame> for PositionedSeque
     if sample_hz == self.sample_hz {
       for (index, value_mut) in buffer.iter_mut().enumerate() {
         let my_index = (start + index as FrameTime - self.start) as usize;
-        *value_mut = self.frames.borrow().get(my_index).cloned().unwrap_or(Frame::equilibrium());
+        *value_mut = value_mut.add_amp(self.frames.borrow().get(my_index).cloned().unwrap_or(Frame::equilibrium()).to_signed_frame());
       }
     }
     else {
       // if the sample rates are different, resample it
       for (index, value_mut) in buffer.iter_mut().enumerate() {
         let time = (start as f64 + index as f64) * sample_hz;
-        *value_mut = self.interpolate_sample (time);
+        *value_mut = value_mut.add_amp(self.interpolate_sample (time).to_signed_frame());
       }
     }
   }
@@ -189,7 +189,7 @@ impl<Frame: dsp::Frame> Note<Frame> for SineWave
     for (index, value_mut) in buffer.iter_mut().enumerate() {
       let time = (start + index as FrameTime) as f64/sample_hz;
       let value = Frame::Sample::from_sample(self.value (time));
-      *value_mut = Frame::from_fn(|_| value);
+      *value_mut = value_mut.add_amp(Frame::from_fn(|_| value).to_signed_frame());
     }
   }
 }
@@ -349,7 +349,7 @@ impl<Frame: dsp::Frame> Note<Frame> for MIDINote
         else {
           0.0
         });
-        *value_mut = Frame::from_fn(|_| value);
+        *value_mut = value_mut.add_amp(Frame::from_fn(|_| value).to_signed_frame());
       }
     })
   }
