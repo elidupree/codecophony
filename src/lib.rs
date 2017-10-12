@@ -55,12 +55,20 @@ impl<Frame: dsp::Frame, N: Note<Frame>, I: Iterator<Item = N> + Clone> Note<Fram
   }
 }
 
-pub trait Transposable {
-  fn transpose(&mut self, amount: Semitones);
+pub trait Displacable {
+  fn displace(&mut self, distance: NoteTime);
+}
+
+pub trait Dilatable {
+  fn dilate(&mut self, amount: f64, origin: f64);
 }
 
 pub trait Pitched {
   fn frequency(&self)->f64;
+}
+
+pub trait Transposable {
+  fn transpose(&mut self, amount: Semitones);
 }
 
 pub trait PitchShiftable {
@@ -71,13 +79,6 @@ impl <T: PitchShiftable> Transposable for T {
   default fn transpose(&mut self, amount: Semitones) {
     self.pitch_shift(SEMITONE_RATIO.powi(amount));
   }
-}
-
-pub trait Scalable {
-  fn scale(&mut self, amount: f64) {
-    self.scale_about(amount, 0.0)
-  }
-  fn scale_about(&mut self, amount: f64, origin: f64);
 }
 
 
@@ -106,6 +107,14 @@ impl<Frame: dsp::Frame, Frames: Borrow<[Frame]>> Note<Frame> for PositionedSeque
         *value_mut = self.resample(time);
       }
     }
+  }
+}
+
+impl Displacable for SineWave {
+  fn displace(&mut self, distance: NoteTime) {
+    // The distance may not be an exact multiple of the frame time. 
+    // By default, it seems better to slightly misplace the resulting data than to resample it.
+    self.start += (distance*self.sample_hz).round() as FrameTime;
   }
 }
 
@@ -173,20 +182,30 @@ impl<Frame: dsp::Frame> Note<Frame> for SineWave
     }
   }
 }
+
+impl Displacable for SineWave {
+  fn displace(&mut self, distance: NoteTime) {
+    self.start += distance;
+  }
+}
+
+impl Dilatable for SineWave {
+  fn dilate(&mut self, amount: f64, origin: f64) {
+    self.start = origin + (self.start-origin)*amount;
+    self.duration *= amount;
+  }
+}
+
+impl Pitched for SineWave {
+  fn frequency(&self)->f64 {self.frequency}
+}
+
 impl PitchShiftable for SineWave {
   fn pitch_shift(&mut self, frequency_ratio: f64) {
     self.frequency *= frequency_ratio;
   }
 }
-impl Pitched for SineWave {
-  fn frequency(&self)->f64 {self.frequency}
-}
-impl Scalable for SineWave {
-  fn scale_about(&mut self, amount: f64, origin: f64) {
-    self.start = origin + (self.start-origin)*amount;
-    self.duration *= amount;
-  }
-}
+
 
 
 
@@ -226,6 +245,20 @@ pub struct MIDINote {
   pub velocity: i32,
   pub instrument: MIDIInstrument,
 }
+
+impl Displacable for MIDINote {
+  fn displace(&mut self, distance: NoteTime) {
+    self.start += distance;
+  }
+}
+
+impl Dilatable for MIDINote {
+  fn dilate(&mut self, amount: f64, origin: f64) {
+    self.start = origin + (self.start-origin)*amount;
+    self.duration *= amount;
+  }
+}
+
 impl Transposable for MIDINote {
   fn transpose(&mut self, amount: Semitones) {
     self.pitch += amount as i32;
