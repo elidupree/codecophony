@@ -235,7 +235,10 @@ impl PitchShiftable for SineWave {
 }
 
 
-
+#[derive (Clone, Debug)]
+pub struct MIDIPitched;
+#[derive (Clone, Debug)]
+pub struct MIDIPercussion;
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
 pub struct FluidsynthDirectlyRenderableMIDIInstrument {
@@ -246,14 +249,14 @@ pub struct FluidsynthDirectlyRenderableMIDIInstrument {
 const PERCUSSION_CHANNEL: i32 = 9;
 impl FluidsynthDirectlyRenderableMIDIInstrument {
   // offsets the program by one to use the same numbers as the General MIDI specification, which numbers the instruments from one rather than 0
-  pub fn new(program: u32) -> Self {
+  fn pitched(program: u32) -> Self {
     FluidsynthDirectlyRenderableMIDIInstrument {
       bank: 0,
       preset: program - 1,
       channel: 0,
     }
   }
-  pub fn percussion() -> Self {
+  fn percussion() -> Self {
     FluidsynthDirectlyRenderableMIDIInstrument {
       bank: 0,
       preset: 0,
@@ -271,29 +274,60 @@ pub struct FluidsynthDirectlyRenderableMIDINote {
   pub pitch: i32,
   //pub pitch_bend: i32,
   pub velocity: i32,
-  pub instrument: FluidsynthDirectlyRenderableMIDIInstrument ,
+  pub instrument: FluidsynthDirectlyRenderableMIDIInstrument,
 }
 
 #[derive (Clone, Debug)]
-pub struct MIDINote {
+pub struct MIDINote<PitchedOrPercussion> {
   start: NoteTime,
   raw: FluidsynthDirectlyRenderableMIDINote,
+  _marker: PhantomData<PitchedOrPercussion>,
 }
 
-impl Nudgable for MIDINote {
+pub type MIDIPitchedNote = MIDINote<MIDIPitched>;
+pub type MIDIPercussionNote = MIDINote<MIDIPercussion>;
+
+impl MIDINote<MIDIPitched> {
+  pub fn new(start: f64, duration: f64, pitch: i32, velocity: i32, instrument: u32)->Self {
+    MIDINote {
+      start,
+      raw: FluidsynthDirectlyRenderableMIDINote {
+        duration: NotNaN::new (duration).unwrap(),
+        pitch, velocity,
+        instrument: FluidsynthDirectlyRenderableMIDIInstrument::pitched(instrument),
+      },
+      _marker: PhantomData,
+    }
+  }
+}
+impl MIDINote<MIDIPercussion> {
+  pub fn new(start: f64, duration: f64, velocity: i32, instrument: i32)->Self {
+    MIDINote {
+      start,
+      raw: FluidsynthDirectlyRenderableMIDINote {
+        duration: NotNaN::new (duration).unwrap(),
+        pitch: instrument, velocity,
+        instrument: FluidsynthDirectlyRenderableMIDIInstrument::percussion(),
+      },
+      _marker: PhantomData,
+    }
+  }
+}
+
+impl<PitchedOrPercussion> Nudgable for MIDINote<PitchedOrPercussion> {
   fn nudge(&mut self, distance: NoteTime) {
     self.start += distance;
   }
 }
 
-impl Dilatable for MIDINote {
+impl<PitchedOrPercussion> Dilatable for MIDINote<PitchedOrPercussion> {
   fn dilate(&mut self, amount: f64, origin: f64) {
     self.start = origin + (self.start-origin)*amount;
     self.raw.duration *= amount;
   }
 }
 
-impl Transposable for MIDINote {
+impl Transposable for MIDINote<MIDIPitched> {
   fn transpose(&mut self, amount: Semitones) {
     self.raw.pitch += amount as i32;
   }
@@ -359,11 +393,11 @@ fn with_rendered_midi_note <Return, F: FnOnce (&[Vec<f32>;2])->Return> (note: &F
   });
 }
 
-impl Windowed for MIDINote {
+impl<PitchedOrPercussion> Windowed for MIDINote<PitchedOrPercussion> {
   fn start (&self)->NoteTime {self.start}
   fn end (&self)->NoteTime {self.start+self.raw.duration.into_inner()+5.0}
 }
-impl<Frame: dsp::Frame> Renderable<Frame> for MIDINote 
+impl<PitchedOrPercussion, Frame: dsp::Frame> Renderable<Frame> for MIDINote<PitchedOrPercussion> 
     where Frame::Sample: dsp::FromSample<f32> {
   fn render(&self, buffer: &mut [Frame], start: FrameTime, sample_hz: f64) {
     with_rendered_midi_note (&self.raw, sample_hz, | channels | {
