@@ -238,13 +238,13 @@ impl PitchShiftable for SineWave {
 
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
-pub struct MIDIInstrument {
+pub struct RawMIDIInstrument {
   channel: i32,
   bank: u32,
   preset: u32,
 }
 const PERCUSSION_CHANNEL: i32 = 9;
-impl MIDIInstrument {
+impl RawMIDIInstrument {
   // offsets the program by one to use the same numbers as the General MIDI specification, which numbers the instruments from one rather than 0
   pub fn new(program: u32) -> Self {
     MIDIInstrument {
@@ -266,12 +266,18 @@ impl MIDIInstrument {
 }
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
-pub struct MIDINote {
-  pub start: NotNaN<NoteTime>,
+pub struct RawMIDINote {
   pub duration: NotNaN<NoteTime>,
   pub pitch: i32,
+  pub pitch_bend: i32,
   pub velocity: i32,
   pub instrument: MIDIInstrument,
+}
+
+#[derive (Clone, Debug)]
+pub struct MIDINote {
+  start: NoteTime,
+  raw: RawMIDINote,
 }
 
 impl Nudgable for MIDINote {
@@ -283,13 +289,13 @@ impl Nudgable for MIDINote {
 impl Dilatable for MIDINote {
   fn dilate(&mut self, amount: f64, origin: f64) {
     self.start = NotNaN::new(origin + (self.start.into_inner()-origin)*amount).unwrap();
-    self.duration *= amount;
+    self.raw.duration *= amount;
   }
 }
 
 impl Transposable for MIDINote {
   fn transpose(&mut self, amount: Semitones) {
-    self.pitch += amount as i32;
+    self.raw.pitch += amount as i32;
   }
 }
 
