@@ -406,6 +406,8 @@ impl<PitchedOrPercussion, Frame: dsp::Frame> Renderable<Frame> for MIDINote<Pitc
         let rendered_index = ((index as FrameTime + start) - rounded_note_start) as usize;
         let value = Frame::Sample::from_sample(if let Some(left) = channels[0].get(rendered_index) {
           let right = channels[1].get(rendered_index).unwrap();
+          assert!(left.is_finite());
+          assert!(right.is_finite());
           // hack: convert stereo to mono
           (left + right)*0.5
         }
