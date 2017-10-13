@@ -238,23 +238,23 @@ impl PitchShiftable for SineWave {
 
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
-pub struct RawMIDIInstrument {
+pub struct FluidsynthDirectlyRenderableMIDIInstrument {
   channel: i32,
   bank: u32,
   preset: u32,
 }
 const PERCUSSION_CHANNEL: i32 = 9;
-impl RawMIDIInstrument {
+impl FluidsynthDirectlyRenderableMIDIInstrument {
   // offsets the program by one to use the same numbers as the General MIDI specification, which numbers the instruments from one rather than 0
   pub fn new(program: u32) -> Self {
-    MIDIInstrument {
+    FluidsynthDirectlyRenderableMIDIInstrument {
       bank: 0,
       preset: program - 1,
       channel: 0,
     }
   }
   pub fn percussion() -> Self {
-    MIDIInstrument {
+    FluidsynthDirectlyRenderableMIDIInstrument {
       bank: 0,
       preset: 0,
       channel: PERCUSSION_CHANNEL,
@@ -266,18 +266,18 @@ impl RawMIDIInstrument {
 }
 
 #[derive (Clone, PartialEq, Eq, Hash, Debug)]
-pub struct RawMIDINote {
+pub struct FluidsynthDirectlyRenderableMIDINote {
   pub duration: NotNaN<NoteTime>,
   pub pitch: i32,
-  pub pitch_bend: i32,
+  //pub pitch_bend: i32,
   pub velocity: i32,
-  pub instrument: MIDIInstrument,
+  pub instrument: FluidsynthDirectlyRenderableMIDIInstrument ,
 }
 
 #[derive (Clone, Debug)]
 pub struct MIDINote {
   start: NoteTime,
-  raw: RawMIDINote,
+  raw: FluidsynthDirectlyRenderableMIDINote,
 }
 
 impl Nudgable for MIDINote {
@@ -288,7 +288,7 @@ impl Nudgable for MIDINote {
 
 impl Dilatable for MIDINote {
   fn dilate(&mut self, amount: f64, origin: f64) {
-    self.start = NotNaN::new(origin + (self.start.into_inner()-origin)*amount).unwrap();
+    self.start = origin + (self.start-origin)*amount;
     self.raw.duration *= amount;
   }
 }
@@ -303,7 +303,7 @@ struct Fluid {
   settings: fluidsynth::settings::Settings,
   synth: fluidsynth::synth::Synth,
   font_id: u32,
-  notes: HashMap<MIDINote, [Vec<f32>;2]>,
+  notes: HashMap<FluidsynthDirectlyRenderableMIDINote, [Vec<f32>;2]>,
 }
 thread_local! {
   static SYNTHESIZERS: RefCell<HashMap<NotNaN<f64>, Fluid>> = RefCell::new (HashMap::new());
@@ -324,30 +324,23 @@ fn with_fluid <Return, F: FnOnce (&mut Fluid)->Return> (sample_hz: f64, callback
   })
 }
 
-impl Windowed for MIDINote {
-  fn start (&self)->NoteTime {self.start.into_inner()}
-  fn end (&self)->NoteTime {self.start.into_inner()+self.duration.into_inner()*2.0}
-}
-impl<Frame: dsp::Frame> Renderable<Frame> for MIDINote 
-    where Frame::Sample: dsp::FromSample<f32> {
-  fn render(&self, buffer: &mut [Frame], start: FrameTime, sample_hz: f64) {
-    with_fluid (sample_hz, | fluid | {
-      let entry_index = MIDINote {start:NotNaN::new(0.0).unwrap(), .. self.clone()};
-      let channels = {
+fn with_rendered_midi_note <Return, F: FnOnce (&[Vec<f32>;2])->Return> (note: &FluidsynthDirectlyRenderableMIDINote, sample_hz: f64, callback: F) {
+  with_fluid (sample_hz, | fluid | {
+    let channels = {
       let synth = &mut fluid.synth;
       let font_id = fluid.font_id;
-      fluid.notes.entry (entry_index).or_insert_with(|| {
-        if !self.instrument.is_percussion() {
-          synth.program_select(self.instrument.channel, font_id,
-                                            self.instrument.bank,
-                                            self.instrument.preset);
+      fluid.notes.entry (note.clone()).or_insert_with(|| {
+        if !note.instrument.is_percussion() {
+          synth.program_select(note.instrument.channel, font_id,
+                                            note.instrument.bank,
+                                            note.instrument.preset);
         }
-        synth.noteon(self.instrument.channel, self.pitch, self.velocity);
+        synth.noteon(note.instrument.channel, note.pitch, note.velocity);
         let mut left = Vec::new();
         let mut right = Vec::new();
-        assert! (synth.write_f32 ((self.duration.into_inner()*sample_hz) as usize, &mut left, &mut right));
-        if !self.instrument.is_percussion() {
-          synth.noteoff(self.instrument.channel, self.pitch);
+        assert! (synth.write_f32 ((note.duration.into_inner()*sample_hz) as usize, &mut left, &mut right));
+        if !note.instrument.is_percussion() {
+          synth.noteoff(note.instrument.channel, note.pitch);
         }
         for index in 0..1000 {
           let duration =(1.0+sample_hz/10.0) as usize;
@@ -359,9 +352,22 @@ impl<Frame: dsp::Frame> Renderable<Frame> for MIDINote
           assert!(index <900);
         }
         [left, right]
-      })};
-      
-      let rounded_note_start = (self.start.into_inner()*sample_hz) as FrameTime;
+      })
+    };
+    
+    callback(channels);
+  });
+}
+
+impl Windowed for MIDINote {
+  fn start (&self)->NoteTime {self.start}
+  fn end (&self)->NoteTime {self.start+self.raw.duration.into_inner()+5.0}
+}
+impl<Frame: dsp::Frame> Renderable<Frame> for MIDINote 
+    where Frame::Sample: dsp::FromSample<f32> {
+  fn render(&self, buffer: &mut [Frame], start: FrameTime, sample_hz: f64) {
+    with_rendered_midi_note (&self.raw, sample_hz, | channels | {
+      let rounded_note_start = (self.start*sample_hz).round() as FrameTime;
       for (index, value_mut) in buffer.iter_mut().enumerate() {
         let rendered_index = ((index as FrameTime + start) - rounded_note_start) as usize;
         let value = Frame::Sample::from_sample(if let Some(left) = channels[0].get(rendered_index) {
