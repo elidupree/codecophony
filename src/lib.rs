@@ -8,6 +8,10 @@ extern crate ordered_float;
 #[macro_use]
 extern crate lazy_static;
 extern crate portaudio;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
+extern crate serde_json;
 
 macro_rules! printlnerr(
     ($($arg:tt)*) => { {use std::io::Write;
@@ -29,6 +33,7 @@ use ordered_float::{NotNaN, OrderedFloat};
 
 
 pub mod rendering_gui;
+pub mod phrase;
 
 
 pub type FrameTime = i32;
@@ -343,11 +348,18 @@ impl<PitchedOrPercussion> Dilatable for MIDINote<PitchedOrPercussion> {
   }
 }
 
+impl Pitched for MIDINote<MIDIPitched> {
+  fn frequency(&self)->f64 {
+    440.0*SEMITONE_RATIO.powi(69+self.raw.pitch)
+  }
+}
+
 impl Transposable for MIDINote<MIDIPitched> {
   fn transpose(&mut self, amount: Semitones) {
     self.raw.pitch += amount as i32;
   }
 }
+
 
 struct Fluid {
   settings: fluidsynth::settings::Settings,
