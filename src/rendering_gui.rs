@@ -24,20 +24,14 @@ pub struct RenderingGui {
   pa: PortAudio,
   stream: Stream <NonBlocking, <OutputStreamSettings<Output> as StreamSettings>::Flow>,
   inner: Arc<RenderingGuiInner>,
-  visuals: NonSharedVisuallyRenderedStuff,
 }
 
-#[derive (Clone, Serialize, Default)]
-pub struct NonSharedVisuallyRenderedStuff {
-  pub phrases: Vec<Phrase>,
-}
+
 
 #[derive (Serialize)]
-pub struct VisuallyRenderedStuff<'a> {
-  pub music_data: &'a NonSharedVisuallyRenderedStuff,
-  pub playback_position: i32,
-  pub playback_start: i32,
-  pub playback_end: i32,
+pub enum GuiUpdate {
+  ReplacePhrases (Vec<Phrase>),
+  UpdatePlaybackPosition (FrameTime),
 }
 
 impl RenderingGui {
@@ -81,7 +75,6 @@ impl RenderingGui {
       pa,
       stream,
       inner,
-      visuals: Default::default(),
     }
   }
   
@@ -92,16 +85,8 @@ impl RenderingGui {
     self.inner.playback_start.store(range.0, Ordering::Relaxed);
     self.inner.playback_end  .store(range.1, Ordering::Relaxed);
   }
-  pub fn set_visuals (&mut self, visuals: NonSharedVisuallyRenderedStuff) {
-    self.visuals = visuals;
-  }
-  pub fn export_visuals (&self)->String {
-    serde_json::to_string(&VisuallyRenderedStuff {
-      music_data: &self.visuals,
-      playback_position: self.inner.playback_position.load(Ordering::Relaxed),
-      playback_start   : self.inner.playback_start   .load(Ordering::Relaxed),
-      playback_end     : self.inner.playback_end     .load(Ordering::Relaxed),
-    }).unwrap()
+  pub fn gui_updates(&self)->Vec<GuiUpdate> {
+    vec![GuiUpdate::UpdatePlaybackPosition(self.inner.playback_position.load(Ordering::Relaxed))]
   }
 }
 
