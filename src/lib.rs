@@ -1,4 +1,4 @@
-#![feature (specialization, iterator_step_by)]
+#![feature (specialization, iterator_step_by, integer_atomics)]
 
 extern crate rand;
 extern crate fluidsynth;
@@ -7,6 +7,7 @@ extern crate dsp;
 extern crate ordered_float;
 #[macro_use]
 extern crate lazy_static;
+extern crate portaudio;
 
 macro_rules! printlnerr(
     ($($arg:tt)*) => { {use std::io::Write;
@@ -27,6 +28,9 @@ use dsp::Sample;
 use ordered_float::{NotNaN, OrderedFloat};
 
 
+pub mod rendering_gui;
+
+
 pub type FrameTime = i32;
 pub type NoteTime = f64;
 pub type Semitones = i32;
@@ -42,33 +46,45 @@ pub trait Renderable<Frame: dsp::Frame>: Windowed {
   fn render (&self, buffer: &mut [Frame], start: FrameTime, sample_hz: f64);
 }
 
-
-impl<'a, N: Windowed + 'a, I: Iterator<Item = &'a N> + Clone> Windowed for I {
-  fn start (&self)->NoteTime {
-    match self.clone().map (| note | OrderedFloat(note.start())).min() {
-      None => 1.0,
-      Some(a)=>a.0,
-    }
-  }
-  fn end (&self)->NoteTime {
-    match self.clone().map (| note | OrderedFloat(note.end())).max() {
-      None => 0.0,
-      Some(a)=>a.0,
-    }
-  }
-}
-impl<'a, Frame: dsp::Frame, N: Renderable<Frame> + 'a, I: Iterator<Item = &'a N> + Clone> Renderable<Frame> for I {
-  fn render(&self, buffer: &mut [Frame], start: FrameTime, sample_hz: f64) {
-    for note in self.clone() {
-      let afterend = start + buffer.len() as FrameTime;
-      let note_start = max(start, (note.start()*sample_hz).ceil() as FrameTime);
-      let note_afterend = min(afterend, (note.end()*sample_hz).floor() as FrameTime + 1);
-      if note_afterend > note_start {
-        note.render(&mut buffer[(note_start-start) as usize .. (note_afterend-start) as usize], note_start, sample_hz);
+macro_rules! impl_windowed_for_iterable {
+  ($self_hack:ident, $iter: expr) => {
+    fn start (&$self_hack)->NoteTime {
+      match $iter.map (| note | OrderedFloat(note.start())).min() {
+        None => 1.0,
+        Some(a)=>a.0,
       }
     }
-  }
+    fn end (&$self_hack)->NoteTime {
+      match $iter.map (| note | OrderedFloat(note.end())).max() {
+        None => 0.0,
+        Some(a)=>a.0,
+      }
+    }
+  };
 }
+macro_rules! impl_renderable_for_iterable {
+  ($self_hack:ident, $iter: expr) => {
+    fn render(&$self_hack, buffer: &mut [Frame], start: FrameTime, sample_hz: f64) { 
+      for note in $iter {
+        let afterend = start + buffer.len() as FrameTime;
+        let note_start = max(start, (note.start()*sample_hz).ceil() as FrameTime);
+        let note_afterend = min(afterend, (note.end()*sample_hz).floor() as FrameTime + 1);
+        if note_afterend > note_start {
+          note.render(&mut buffer[(note_start-start) as usize .. (note_afterend-start) as usize], note_start, sample_hz);
+        }
+      }
+    }
+  };
+}
+
+impl<T: Windowed> Windowed for Vec<T> {
+  impl_windowed_for_iterable!(self, self.iter());
+}
+
+impl<Frame: dsp::Frame, T: Renderable<Frame>> Renderable<Frame> for Vec<T> {
+  impl_renderable_for_iterable!(self, self.iter());
+}
+
 
 pub trait Nudgable {
   fn nudge(&mut self, distance: NoteTime);
@@ -151,7 +167,7 @@ impl<Frame: dsp::Frame, Frames: Borrow<[Frame]>> PositionedSequence<Frame, Frame
 
 impl<Frame: dsp::Frame, Frames: Borrow<[Frame]>> PositionedSequence<Frame, Frames>
   where Frames: FromIterator<Frame> + BorrowMut<[Frame]> {
-  pub fn rendered_from <N: Renderable<Frame>> (note: N, sample_hz: f64)->Self {
+  pub fn rendered_from <N: Renderable<Frame> + ?Sized> (note: &N, sample_hz: f64)->Self {
     let earliest = (note.start()*sample_hz).ceil() as FrameTime;
     let latest = (note.end()*sample_hz).floor() as FrameTime;
     let length = max(0,latest+1-earliest) as usize;
