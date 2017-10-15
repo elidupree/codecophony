@@ -31,7 +31,7 @@ pub struct RenderingGui {
 #[derive (Serialize)]
 pub enum GuiUpdate {
   ReplacePhrases (Vec<Phrase>),
-  UpdatePlaybackPosition (FrameTime),
+  UpdatePlaybackPosition (NoteTime),
 }
 
 impl RenderingGui {
@@ -86,7 +86,7 @@ impl RenderingGui {
     self.inner.playback_end  .store(range.1, Ordering::Relaxed);
   }
   pub fn gui_updates(&self)->Vec<GuiUpdate> {
-    vec![GuiUpdate::UpdatePlaybackPosition(self.inner.playback_position.load(Ordering::Relaxed))]
+    vec![GuiUpdate::UpdatePlaybackPosition(self.inner.playback_position.load(Ordering::Relaxed) as NoteTime / self.sample_hz)]
   }
 }
 
