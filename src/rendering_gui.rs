@@ -34,6 +34,11 @@ pub enum GuiUpdate {
   UpdatePlaybackPosition (NoteTime),
 }
 
+#[derive (Deserialize)]
+pub enum GuiInput {
+  SetPlaybackRange (NoteTime, NoteTime),
+}
+
 impl RenderingGui {
 
   pub fn new(sample_hz: f64) -> RenderingGui {
@@ -55,7 +60,7 @@ impl RenderingGui {
         Renderable::<[Output; CHANNELS]>::render(&**note, buffer, position, sample_hz);
         
         let mut new_position = position + buffer.len() as i32;
-        if new_position > end {new_position = start;}
+        if new_position < start || new_position > end {new_position = start;}
         callback_inner.playback_position.compare_and_swap(position, new_position, Ordering::Relaxed);
       }
       
@@ -87,6 +92,14 @@ impl RenderingGui {
   }
   pub fn gui_updates(&self)->Vec<GuiUpdate> {
     vec![GuiUpdate::UpdatePlaybackPosition(self.inner.playback_position.load(Ordering::Relaxed) as NoteTime / self.sample_hz)]
+  }
+  pub fn apply_gui_input(&mut self, input: &GuiInput) {
+    match input {
+      &GuiInput::SetPlaybackRange (start,end) => {
+        self.set_playback_range (((start*self.sample_hz) as FrameTime, (end*self.sample_hz) as FrameTime));
+      },
+      _=>(),
+    }
   }
 }
 
