@@ -30,12 +30,12 @@ pub struct RenderingGui {
 pub struct GuiPhrase {
   pub data: Phrase,
   pub timed_with_playback: bool,
-  pub editing_id: Option<String>,
+  pub editable: bool,
 }
 
 #[derive (Serialize)]
 pub enum GuiUpdate {
-  ReplacePhrases (Vec<GuiPhrase>),
+  ReplacePhrase (String, GuiPhrase),
   UpdatePlaybackPosition (NoteTime),
 }
 
