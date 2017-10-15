@@ -19,8 +19,23 @@ impl PhraseNote {
 
 #[derive (Clone, Serialize, Deserialize, Debug)]
 pub struct Phrase {
-  
   pub notes: Vec<PhraseNote>,
+}
+
+
+impl Phrase {
+  pub fn to_midi_pitched <F: FnMut (&PhraseNote)->(i32, u32)> (&self, mut velocity_and_instrument_picker: F)->Vec<MIDIPitchedNote> {
+    self.notes.iter().map(| note | {
+      let (velocity, instrument) = velocity_and_instrument_picker (&note);
+      MIDIPitchedNote::new (note.start, note.end - note.start, frequency_to_nearest_midi_pitch (note.frequency), velocity, instrument)
+    }).collect()
+  }
+  pub fn to_midi_percussion <F: FnMut (&PhraseNote)->(i32, i32)> (&self, mut velocity_and_instrument_picker: F)->Vec<MIDIPercussionNote> {
+    self.notes.iter().map(| note | {
+      let (velocity, instrument) = velocity_and_instrument_picker (&note);
+      MIDIPercussionNote::new (note.start, note.end - note.start, velocity, instrument)
+    }).collect()
+  }
 }
 
 
@@ -28,7 +43,7 @@ pub trait ToPhraseNote {
   fn to_phrase_note (&self)->PhraseNote;
 }
 
-impl ToPhraseNote for MIDINote<MIDIPitched> {
+impl ToPhraseNote for MIDIPitchedNote {
   fn to_phrase_note (&self)->PhraseNote {
     let mut tags = HashSet::new();
     tags.insert (String::from_str ("pitched").unwrap());
@@ -42,7 +57,7 @@ impl ToPhraseNote for MIDINote<MIDIPitched> {
   }
 }
 
-impl ToPhraseNote for MIDINote<MIDIPercussion> {
+impl ToPhraseNote for MIDIPercussionNote {
   fn to_phrase_note (&self)->PhraseNote {
     let mut tags = HashSet::new();
     tags.insert (String::from_str ("percussion").unwrap());
@@ -54,7 +69,7 @@ impl ToPhraseNote for MIDINote<MIDIPercussion> {
       // note: this is technically the exact same formula as pitched instruments,
       // but it means something different. It's kind of a hack to display percussion this way,
       // but the hack is fairly nice to look at, and other MIDI users will be familiar with it.
-      frequency: 440.0*SEMITONE_RATIO.powi(69+self.raw.pitch),
+      frequency: midi_pitch_to_frequency(self.raw.pitch),
       tags,
     }
   }

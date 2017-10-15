@@ -348,9 +348,16 @@ impl<PitchedOrPercussion> Dilatable for MIDINote<PitchedOrPercussion> {
   }
 }
 
+pub fn midi_pitch_to_frequency(pitch: i32)->f64 {
+  440.0*SEMITONE_RATIO.powi(pitch-69)
+}
+pub fn frequency_to_nearest_midi_pitch(frequency: f64)->i32 {
+  ((frequency/440.0).ln()/SEMITONE_RATIO.ln()).round() as i32 + 69
+}
+
 impl Pitched for MIDINote<MIDIPitched> {
   fn frequency(&self)->f64 {
-    440.0*SEMITONE_RATIO.powi(69+self.raw.pitch)
+    midi_pitch_to_frequency(self.raw.pitch)
   }
 }
 

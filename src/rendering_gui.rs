@@ -26,17 +26,23 @@ pub struct RenderingGui {
   inner: Arc<RenderingGuiInner>,
 }
 
-
+#[derive (Serialize)]
+pub struct GuiPhrase {
+  pub data: Phrase,
+  pub timed_with_playback: bool,
+  pub editing_id: Option<String>,
+}
 
 #[derive (Serialize)]
 pub enum GuiUpdate {
-  ReplacePhrases (Vec<Phrase>),
+  ReplacePhrases (Vec<GuiPhrase>),
   UpdatePlaybackPosition (NoteTime),
 }
 
 #[derive (Deserialize)]
 pub enum GuiInput {
   SetPlaybackRange (NoteTime, NoteTime),
+  EditPhrase (String, Phrase),
 }
 
 impl RenderingGui {
