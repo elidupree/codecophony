@@ -17,6 +17,31 @@ impl PhraseNote {
   }
 }
 
+
+impl Nudgable for PhraseNote {
+  fn nudge(&mut self, distance: NoteTime) {
+    self.start += distance;
+  }
+}
+
+impl Dilatable for PhraseNote {
+  fn dilate(&mut self, amount: f64, origin: f64) {
+    self.start = origin + (self.start-origin)*amount;
+    self.end   = origin + (self.end  -origin)*amount;
+  }
+}
+
+impl Pitched for PhraseNote {
+  fn frequency(&self)->f64 {self.frequency}
+}
+
+impl PitchShiftable for PhraseNote {
+  fn pitch_shift(&mut self, frequency_ratio: f64) {
+    self.frequency *= frequency_ratio;
+  }
+}
+
+
 #[derive (Clone, Serialize, Deserialize, Debug)]
 pub struct Phrase {
   pub notes: Vec<PhraseNote>,
