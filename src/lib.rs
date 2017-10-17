@@ -91,6 +91,33 @@ impl<Frame: dsp::Frame, T: Renderable<Frame>> Renderable<Frame> for Vec<T> {
 }
 
 
+macro_rules! impl_windowed_for_derefable {
+  () => {
+    fn start (&self)->NoteTime {
+      (**self).start()
+    }
+    fn end (&self)->NoteTime {
+      (**self).end()
+    }
+  };
+}
+macro_rules! impl_renderable_for_derefable {
+  () => {
+    fn render(&self, buffer: &mut [Frame], start: FrameTime, sample_hz: f64) { 
+      (**self).render(buffer, start, sample_hz);
+    }
+  };
+}
+
+impl<T: Windowed + ?Sized> Windowed for Box<T> {
+  impl_windowed_for_derefable!();
+}
+
+impl<Frame: dsp::Frame, T: Renderable<Frame> + ?Sized> Renderable<Frame> for Box<T> {
+  impl_renderable_for_derefable!();
+}
+
+
 pub trait Nudgable {
   fn nudge(&mut self, distance: NoteTime);
 }

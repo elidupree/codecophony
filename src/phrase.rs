@@ -43,6 +43,20 @@ pub trait ToPhraseNote {
   fn to_phrase_note (&self)->PhraseNote;
 }
 
+impl ToPhraseNote for SineWave {
+  fn to_phrase_note (&self)->PhraseNote {
+    let mut tags = HashSet::new();
+    tags.insert (String::from_str ("sine").unwrap());
+    PhraseNote {
+      start: self.start,
+      end: self.start + self.duration,
+      frequency: self.frequency,
+      tags,
+    }
+  }
+}
+
+
 impl ToPhraseNote for MIDIPitchedNote {
   fn to_phrase_note (&self)->PhraseNote {
     let mut tags = HashSet::new();
