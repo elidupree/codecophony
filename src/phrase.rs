@@ -12,7 +12,7 @@ pub struct PhraseNote {
 }
 
 impl PhraseNote {
-  fn new (start: NoteTime, end: NoteTime, frequency: f64)->PhraseNote {
+  pub fn new (start: NoteTime, end: NoteTime, frequency: f64)->PhraseNote {
     PhraseNote {start, end, frequency, tags: HashSet::new()}
   }
 }
