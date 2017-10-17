@@ -12,6 +12,7 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_json;
+extern crate notify;
 
 macro_rules! printlnerr(
     ($($arg:tt)*) => { {use std::io::Write;
@@ -32,7 +33,7 @@ use dsp::Sample;
 use ordered_float::{NotNaN, OrderedFloat};
 
 
-pub mod rendering_gui;
+pub mod project;
 pub mod phrase;
 
 
