@@ -6,12 +6,13 @@ use portaudio::{PortAudio, Stream, NonBlocking, Flow, StreamSettings, OutputStre
 use std::sync::atomic::{Ordering, AtomicI32};
 use std::sync::{Arc, Mutex};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::channel;
+use std::sync::mpsc::{channel, Receiver};
 use std::collections::HashSet;
 use std::fs::File;
 use std::io;
 use std::time::Duration;
-use notify::{self, Watcher, RecommendedWatcher, RecursiveMode, DebouncedEvent};
+use std::thread;
+use notify::{self, Watcher, RecursiveMode, DebouncedEvent};
 
 use phrase::Phrase;
 
@@ -39,17 +40,24 @@ pub enum GuiInput {
   EditPhrase (String, Phrase),
 }
 
+#[derive (Deserialize)]
+struct PlaybackInfo {
+  playback_range: (NoteTime, NoteTime),
+  override_playback_position: Option <NoteTime>,
+}
 
-pub fn watch_phrases<F: FnMut(&HashMap<String, Phrase>, &HashSet<String>)> (project_path: &Path, changed_callback: F) {
+
+// Deliberately not generic to improve compile times of callers
+pub fn watch_phrases (project_path: &Path, changed_callback: &mut FnMut(&HashMap<String, Phrase>, &HashSet<String>)) {
   let phrases_path = project_path.join("editable/phrases");
   let (sender, receiver) = channel();
   let mut watcher = notify::watcher (sender, Duration::from_millis(100)).unwrap();
-  watcher.watch (phrases_path, RecursiveMode::Recursive);
+  watcher.watch (&phrases_path, RecursiveMode::Recursive).unwrap();
   
   let mut phrases = HashMap::new();
   let mut changed = HashSet::new();
   
-    let handle_path = |path: PathBuf| {
+    let handle_path = |path: PathBuf, phrases: &mut HashMap<String, Phrase>, changed: &mut HashSet<String> | {
       let name = match path.file_stem() {
         None=> {
           printlnerr!("Error during codecophony::project::watch_phrases: Couldn't get file_stem of path: {:?}", path);
@@ -67,13 +75,15 @@ pub fn watch_phrases<F: FnMut(&HashMap<String, Phrase>, &HashSet<String>)> (proj
      
       let mut file = match File::open (path) {
         Ok(a) => a,
-        Err(NotFound) => {
-          phrases.remove(&name);
-          return;
-        },
-        Err(e) => {
-          printlnerr!("File error during codecophony::project::watch_phrases: {:?}", e);
-          return;
+        Err(e) => match e.kind() {
+          io::ErrorKind::NotFound => {
+            phrases.remove(&name);
+            return;
+          },
+          _ => {
+            printlnerr!("File error during codecophony::project::watch_phrases: {:?}", e);
+            return;
+          }
         }
       };
       let phrase = match serde_json::from_reader (file) {
@@ -87,7 +97,7 @@ pub fn watch_phrases<F: FnMut(&HashMap<String, Phrase>, &HashSet<String>)> (proj
     };
 
   for entry in ::std::fs::read_dir(phrases_path).unwrap() {
-    handle_path (entry.unwrap().path());
+    handle_path (entry.unwrap().path(), &mut phrases, &mut changed);
   }
   
   loop {
@@ -98,10 +108,10 @@ pub fn watch_phrases<F: FnMut(&HashMap<String, Phrase>, &HashSet<String>)> (proj
     
     loop {
       match event {
-        DebouncedEvent::Write(path) => handle_path(path),
-        DebouncedEvent::Create(path) => handle_path(path),
-        DebouncedEvent::Remove(path) => handle_path(path),
-        DebouncedEvent::Rename(first, second) => { handle_path(first); handle_path (second);},
+        DebouncedEvent::Write(path) => handle_path(path, &mut phrases, &mut changed),
+        DebouncedEvent::Create(path) => handle_path(path, &mut phrases, &mut changed),
+        DebouncedEvent::Remove(path) => handle_path(path, &mut phrases, &mut changed),
+        DebouncedEvent::Rename(first, second) => { handle_path(first, &mut phrases, &mut changed); handle_path (second, &mut phrases, &mut changed);},
         _=>(),
       };
       if let Ok(a) = receiver.try_recv() {
@@ -117,7 +127,7 @@ pub fn watch_phrases<F: FnMut(&HashMap<String, Phrase>, &HashSet<String>)> (proj
 pub fn write_phrase (project_path: &Path, name: &str, phrase: &Phrase) {
   let phrases_path = project_path.join("generated/phrases");
   let phrase_path = phrases_path.join(name).join(".json");
-  let mut file = match File::create (phrase_path) {
+  let file = match File::create (phrase_path) {
     Ok(a) => a,
     Err(e) => {
       printlnerr!("File error during codecophony::project::write_phrase: {:?}", e);
@@ -200,7 +210,32 @@ impl Globals {
     stream.start().unwrap();
     
     let ui_path = project_path.join ("ui/playback.json");
+    let (sender, receiver) = channel();
+    let mut watcher = notify::watcher(sender, Duration::from_millis(10)).unwrap();
+    watcher.watch(&ui_path, RecursiveMode::NonRecursive).unwrap();
     
+    {
+      let inner = inner.clone();
+      thread::spawn (move | | {
+        while let Ok(_) = receiver.recv() {
+          
+          if let Ok(file) = File::open (&ui_path) {
+            let data: PlaybackInfo = match serde_json::from_reader (file) {
+              Ok(a) => a,
+              Err(e) => {
+                printlnerr!("codecophony: Error parsing playback.json: {:?}", e);
+                continue;
+              }
+            };
+            inner.playback_start.store((data.playback_range.0*sample_hz) as FrameTime, Ordering::Relaxed);
+            inner.playback_end  .store((data.playback_range.1*sample_hz) as FrameTime, Ordering::Relaxed);
+            if let Some(time) = data.override_playback_position {
+              inner.playback_position.store((time*sample_hz) as FrameTime, Ordering::Relaxed);
+            }
+          }
+        }
+      });
+    }
     
     Globals {
       sample_hz,
@@ -215,7 +250,7 @@ impl Globals {
   fn set_playback_data (&self, data: Option<Box<Renderable<[Output; CHANNELS]> + Send>>) {
     (*self.inner.playback_data.lock().unwrap()) = data;
   }
-  fn set_playback_range (&self, range: (i32,i32)) {
+  /*fn set_playback_range (&self, range: (i32,i32)) {
     self.inner.playback_start.store(range.0, Ordering::Relaxed);
     self.inner.playback_end  .store(range.1, Ordering::Relaxed);
   }
@@ -229,12 +264,14 @@ impl Globals {
       },
       _=>(),
     }
-  }
+  }*/
 }
 
 impl Drop for Globals {
   fn drop(&mut self) {
-    self.stream.stop();
+    self.stream.stop().unwrap();
+    let ui_path = self.project_path.join ("ui/playback.json");
+    self.watcher.unwatch (&ui_path).unwrap();
   }
 }
 
