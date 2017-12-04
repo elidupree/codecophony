@@ -21,6 +21,7 @@ impl PhraseNote {
 impl Nudgable for PhraseNote {
   fn nudge(&mut self, distance: NoteTime) {
     self.start += distance;
+    self.end += distance;
   }
 }
 

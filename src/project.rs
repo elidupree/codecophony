@@ -126,7 +126,7 @@ pub fn watch_phrases (project_path: &Path, changed_callback: &mut FnMut(&HashMap
     
 pub fn write_phrase (project_path: &Path, name: &str, phrase: &Phrase) {
   let phrases_path = project_path.join("generated/phrases");
-  let phrase_path = phrases_path.join(name).join(".json");
+  let phrase_path = phrases_path.join(format!("{}.json", name));
   let file = match File::create (phrase_path) {
     Ok(a) => a,
     Err(e) => {
