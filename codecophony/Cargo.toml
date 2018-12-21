@@ -1,0 +1,22 @@
+[package]
+name = "codecophony"
+version = "0.1.0"
+authors = ["Eli Dupree <vcs@elidupree.com>"]
+
+[dependencies]
+hound = "1.1.0"
+rand = "0.3"
+dsp-chain = "0.13.1"
+lazy_static = "0.2"
+portaudio = "0.7.0"
+serde = "1.0"
+serde_derive = "1.0"
+serde_json = "1.0"
+notify = "4.0"
+
+[dependencies.fluidsynth]
+git = "https://github.com/elidupree/rust-fluidsynth"
+
+[dependencies.ordered-float]
+version = "0.2"
+features = ["serde"]

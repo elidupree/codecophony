@@ -4,7 +4,7 @@ extern crate hound;
 use codecophony::*;
 
 fn main() {
-  let manual = scrawl_MIDI_notes(
+  /*let manual = scrawl_MIDI_notes(
                             "transpose 57 velocity 100 instrument 61
 12 and 15 and 19 5 8 step 0.5 5 8 10
 12 quiet sustain 17 quiet sustain 20 step \
@@ -31,5 +31,5 @@ finish release 17 release 20
   for t in music.samples.iter() {
     writer.write_sample(*t as i16).unwrap();
 
-  }
+  }*/
 }
