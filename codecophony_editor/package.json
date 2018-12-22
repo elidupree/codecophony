@@ -1,0 +1,20 @@
+{
+  "name": "codecophony-editor",
+  "version": "0.1.0",
+  "description": "A music editor, part of Codecophony",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "repository": "https://github.com/elidupree/codecophony",
+  "keywords": [
+    "Codecophony",
+    "music",
+    "composition",
+    "compose"
+  ],
+  "author": "Eli Dupree",
+  "devDependencies": {
+    "electron": "^3.0.7"
+  }
+}

@@ -1,0 +1,7 @@
+[package]
+name = "codecophony_editor_frontend"
+version = "0.1.0"
+authors = ["Eli Dupree <vcs@elidupree.com>"]
+
+[dependencies]
+codecophony_editor_shared = {path="../codecophony_editor_shared"}

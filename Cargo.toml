@@ -3,6 +3,9 @@
 members = [
   "codecophony",
   "eliduprees_songs_sandbox",
+  "codecophony_editor_frontend",
+  "codecophony_editor_backend",
+  "codecophony_editor_shared",
 ]
 
 [profile.dev]
