@@ -3,7 +3,7 @@ use super::*;
 use dsp::sample::ToFrameSliceMut;
 use dsp::Frame;
 use portaudio::{PortAudio, Stream, NonBlocking, Flow, StreamSettings, OutputStreamSettings};
-use std::sync::atomic::{Ordering, AtomicI32};
+use std::sync::atomic::{Ordering, AtomicI64};
 use std::sync::{Arc, Mutex};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver};
@@ -155,9 +155,9 @@ pub fn set_playback_data (project_path: &Path, sample_hz: f64, data: Option<Box<
 #[derive (Default)]
 struct SharedPlaybackData {
   playback_data: Mutex<Option<Box<Renderable<[Output; CHANNELS]> + Send>>>,
-  playback_position: AtomicI32,
-  playback_start: AtomicI32,
-  playback_end: AtomicI32,
+  playback_position: AtomicI64,
+  playback_start: AtomicI64,
+  playback_end: AtomicI64,
 }
 
 struct Globals {
@@ -176,9 +176,9 @@ lazy_static! {
 impl Globals {
   fn new(project_path: &Path, sample_hz: f64) -> Globals {
     let inner = Arc::new(SharedPlaybackData {
-      playback_start: AtomicI32::new(0),
-      playback_end: AtomicI32::new(10*(sample_hz as FrameTime)),
-      playback_position: AtomicI32::new(0),
+      playback_start: AtomicI64::new(0),
+      playback_end: AtomicI64::new(10*(sample_hz as FrameTime)),
+      playback_position: AtomicI64::new(0),
       playback_data: Default::default(),
     });
     let callback_inner = inner.clone();
@@ -192,7 +192,7 @@ impl Globals {
         let end = callback_inner.playback_end.load(Ordering::Relaxed);
         Renderable::<[Output; CHANNELS]>::render(&**note, buffer, position, sample_hz);
         
-        let mut new_position = position + buffer.len() as i32;
+        let mut new_position = position + buffer.len() as FrameTime;
         if new_position < start || new_position > end {new_position = start;}
         callback_inner.playback_position.compare_and_swap(position, new_position, Ordering::Relaxed);
       }

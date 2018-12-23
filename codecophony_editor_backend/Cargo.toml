@@ -10,3 +10,4 @@ codecophony_editor_shared = {path="../codecophony_editor_shared"}
 serde_json = "1.0"
 portaudio = "0.7"
 dsp-chain = "0.13"
+ordered-float = {version = "0.2", features = ["serde"]}

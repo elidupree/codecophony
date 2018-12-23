@@ -28,6 +28,7 @@ use std::cell::RefCell;
 use std::borrow::{Borrow, BorrowMut};
 use std::marker::PhantomData;
 use std::iter::{self, FromIterator};
+use std::sync::Arc;
 
 use dsp::Sample;
 use ordered_float::{NotNaN, OrderedFloat};
@@ -37,7 +38,7 @@ pub mod project;
 pub mod phrase;
 
 
-pub type FrameTime = i32;
+pub type FrameTime = i64;
 pub type NoteTime = f64;
 pub type Semitones = i32;
 pub const SEMITONE_RATIO: f64 = 1.0594631f64;
@@ -298,14 +299,14 @@ pub struct FluidsynthDirectlyRenderableMIDIInstrument {
 const PERCUSSION_CHANNEL: i32 = 9;
 impl FluidsynthDirectlyRenderableMIDIInstrument {
   // offsets the program by one to use the same numbers as the General MIDI specification, which numbers the instruments from one rather than 0
-  fn pitched(program: u32) -> Self {
+  pub fn pitched(program: u32) -> Self {
     FluidsynthDirectlyRenderableMIDIInstrument {
       bank: 0,
       preset: program - 1,
       channel: 0,
     }
   }
-  fn percussion() -> Self {
+  pub fn percussion() -> Self {
     FluidsynthDirectlyRenderableMIDIInstrument {
       bank: 0,
       preset: 0,
@@ -400,7 +401,7 @@ struct Fluid {
   settings: fluidsynth::settings::Settings,
   synth: fluidsynth::synth::Synth,
   font_id: u32,
-  notes: HashMap<FluidsynthDirectlyRenderableMIDINote, [Vec<f32>;2]>,
+  notes: HashMap<FluidsynthDirectlyRenderableMIDINote, Arc<[[f32;2]]>>,
 }
 thread_local! {
   static SYNTHESIZERS: RefCell<HashMap<NotNaN<f64>, Fluid>> = RefCell::new (HashMap::new());
@@ -421,9 +422,9 @@ fn with_fluid <Return, F: FnOnce (&mut Fluid)->Return> (sample_hz: f64, callback
   })
 }
 
-fn with_rendered_midi_note <Return, F: FnOnce (&[Vec<f32>;2])->Return> (note: &FluidsynthDirectlyRenderableMIDINote, sample_hz: f64, callback: F) {
+pub fn with_rendered_midi_note <Return, F: FnOnce (&Arc<[[f32;2]]>)->Return> (note: &FluidsynthDirectlyRenderableMIDINote, sample_hz: f64, callback: F)->Return {
   with_fluid (sample_hz, | fluid | {
-    let channels = {
+    let samples = {
       let synth = &mut fluid.synth;
       let font_id = fluid.font_id;
       fluid.notes.entry (note.clone()).or_insert_with(|| {
@@ -448,12 +449,20 @@ fn with_rendered_midi_note <Return, F: FnOnce (&[Vec<f32>;2])->Return> (note: &F
           }
           assert!(index <900);
         }
-        [left, right]
+        while let (Some(left_sample), Some(right_sample)) = (left.pop(), right.pop()) {
+          if left_sample.abs() > 0.000001 || right_sample.abs() > 0.000001 {
+            left.push (left_sample) ;
+            right.push (right_sample) ;
+            break
+          }
+        }
+        
+        left.into_iter().zip (right.into_iter()).map (|(l,r)| [l,r]).collect::<Vec<_>>().into_boxed_slice().into()
       })
     };
     
-    callback(channels);
-  });
+    callback(samples)
+  })
 }
 
 impl<PitchedOrPercussion> Windowed for MIDINote<PitchedOrPercussion> {
@@ -463,12 +472,11 @@ impl<PitchedOrPercussion> Windowed for MIDINote<PitchedOrPercussion> {
 impl<PitchedOrPercussion, Frame: dsp::Frame> Renderable<Frame> for MIDINote<PitchedOrPercussion> 
     where Frame::Sample: dsp::FromSample<f32> {
   fn render(&self, buffer: &mut [Frame], start: FrameTime, sample_hz: f64) {
-    with_rendered_midi_note (&self.raw, sample_hz, | channels | {
+    with_rendered_midi_note (&self.raw, sample_hz, | samples | {
       let rounded_note_start = (self.start*sample_hz).round() as FrameTime;
       for (index, value_mut) in buffer.iter_mut().enumerate() {
         let rendered_index = ((index as FrameTime + start) - rounded_note_start) as usize;
-        let value = Frame::Sample::from_sample(if let Some(left) = channels[0].get(rendered_index) {
-          let right = channels[1].get(rendered_index).unwrap();
+        let value = Frame::Sample::from_sample(if let Some([left, right]) = samples.get(rendered_index) {
           assert!(left.is_finite());
           assert!(right.is_finite());
           // hack: convert stereo to mono
