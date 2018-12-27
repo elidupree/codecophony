@@ -1,3 +1,4 @@
+#![feature(nll)]
 #![recursion_limit="256"]
 
 extern crate codecophony_editor_shared as shared;
@@ -13,6 +14,7 @@ use std::cell::RefCell;
 use serde::Serialize;
 use stdweb::web::event::{MouseDownEvent, MouseMoveEvent, MouseUpEvent};
 use stdweb::web::{self, IEventTarget};
+use stdweb::traits::*;
 use nalgebra::Vector2;
 use rand::prelude::*;
 
@@ -98,16 +100,39 @@ impl State {
 }
 
 fn mouse_down (event: MouseDownEvent) {
-eprintln!(" {:?} ", "whatever");
-  STATE.with (| state | {
-    let mut state = state.borrow_mut();
-    state.notes.push (EditedNote::new (Note {
-      start_time: rand::thread_rng().gen_range(0.0, 3.0),
-      duration: 0.3,
-      pitch: rand::thread_rng().gen_range(30, 80),
-    }));
-    state.notes_changed()
-  });
+  
+    let mousedown_other = || STATE.with (| state | {
+      let mut state = state.borrow_mut();
+      state.notes.push (EditedNote::new (Note {
+        start_time: rand::thread_rng().gen_range(0.0, 3.0),
+        duration: 0.3,
+        pitch: rand::thread_rng().gen_range(30, 80),
+      }));
+      state.notes_changed()
+    });
+    
+    let mousedown_note = |id| STATE.with (| state | {
+      let id = SerialNumber(id);
+      let mut state = state.borrow_mut();
+      let note = state.notes.iter_mut().find(|a|a.serial_number == id).unwrap();
+      if random() {
+        note.note.pitch += 1;
+      }
+      else {
+        note.note.pitch -= 1;
+      }
+      state.notes_changed()
+    });
+    
+    js! {
+      var id = $(@{event.target()}).closest ("[data-noteid]").attr("data-noteid");
+      if (id !== undefined) {
+        @{mousedown_note}(parseInt(id));
+      }
+      else {
+        @{mousedown_other}();
+      }
+    }
 }
 
 fn send_to_backend<T: Serialize> (send: &T) {
@@ -167,15 +192,6 @@ backend.on("close", (code)=>{
   send_to_backend(&MessageToBackend::RestartPlaybackAt (Some(0.0)));
   
   web::document().body().unwrap().add_event_listener (mouse_down);
-  eprintln!(" {:?} ", "whatever");
-  STATE.with (| state | {
-    let mut state = state.borrow_mut();
-    state.notes.push (EditedNote::new (Note {
-      start_time: rand::thread_rng().gen_range(0.0, 3.0),
-      duration: 0.3,
-      pitch: rand::thread_rng().gen_range(30, 80),
-    }));
-    state.notes_changed()
-  });
+  
   stdweb::event_loop();
 }
