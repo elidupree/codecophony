@@ -1,0 +1,18 @@
+/* CSS reset */
+html,body,div,dl,dt,dd,ul,ol,li,h1,h2,h3,h4,h5,h6,pre,code,form,fieldset,legend,input,button,textarea,select,p,blockquote,th,td{margin:0;padding:0}
+h1,h2,h3,h4,h5,h6{font-size:100%;font-weight:inherit;}
+img{color:transparent;font-size:0;border:0;vertical-align:middle;}
+
+html,body {
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  position: relative;
+}
+
+.note {
+  position: absolute;
+  background-color: black;
+}

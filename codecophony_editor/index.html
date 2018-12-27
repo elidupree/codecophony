@@ -3,11 +3,14 @@
   <head>
     <meta charset="UTF-8">
     <title>Codecophony</title>
+    <link rel="stylesheet" href="style.css"></link>
   </head>
   <body>
     <h1>Codecophony</h1>
+    <div id="notes"></div>
     <script>
       // You can also require other files to run in this process
+      window.$ = require('./jquery-3.3.1.js')
       require('../target/asmjs-unknown-emscripten/debug/codecophony_editor_frontend.js')
     </script>
   </body>
