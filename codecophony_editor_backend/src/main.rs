@@ -130,7 +130,7 @@ impl PortaudioThread {
     });
     
     self.next_frame_time = end_time;
-    
+    //eprintln!("output {:?}", output_buffer);
     self.sender.send (MessageToRenderThread::PlaybackReachedTime(end_time)).unwrap() ;
     
     portaudio::Continue
@@ -310,13 +310,30 @@ fn main() {
   });
   
   thread::spawn(move || render_thread.render_loop());
-  
+
+
+
   let pa = portaudio::PortAudio::new().unwrap();
+  //eprintln!("def output: {:?}", (pa.default_output_device(), pa.device_info(pa.default_output_device().unwrap())));
+  /*let mut foo = "".to_string();
+  for device in pa.devices().unwrap() {
+    let (idx, info) = device.unwrap();
+    foo = format!("{}{:?}\n", foo, (idx, info.name, info.max_input_channels, info.max_output_channels));
+  }
+  eprintln!("All devices: {}", foo);*/
+  
   let settings = pa.default_output_stream_settings::<Output>(
     CHANNELS as i32,
     SAMPLE_HZ,
     FRAMES_PER_BUFFER as u32,
   ).unwrap();
+  /*let device = portaudio::DeviceIndex(4);
+  let settings = portaudio::OutputStreamSettings::new(
+    portaudio::StreamParameters::new(
+      device, CHANNELS as i32, true, pa.device_info(device).unwrap().default_low_output_latency
+    ),
+    SAMPLE_HZ, FRAMES_PER_BUFFER as u32
+  );*/
   let mut stream = pa.open_non_blocking_stream(settings, move |p| portaudio_thread.call(p)).unwrap();
   stream.start().unwrap();
 
@@ -324,6 +341,7 @@ fn main() {
   let stdin = stdin.lock();
   for line in stdin.lines() {
     let line = line.unwrap();
+    //eprintln!("Received message from frontend: {}", line);
     if let Ok(message) = serde_json::from_str(&line) {
       match message {
         MessageToBackend::RestartPlaybackAt(script_time) => {
@@ -340,5 +358,6 @@ fn main() {
     
     //thread::sleep(Duration::from_millis(50));
   }
+  eprintln!("exiting backend");
 }
 
