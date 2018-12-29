@@ -28,8 +28,13 @@ pub mod misc;
 use misc::SerialNumber;
 
 type Vector = Vector2 <f64>;
-pub const PIXELS_PER_TIME: f64 = 30.0;
-pub const PIXELS_PER_SEMITONE: f64 = 5.0;
+pub const PIXELS_PER_TIME: f64 = 100.0;
+pub const PIXELS_PER_SEMITONE: f64 = 8.0;
+
+pub struct NoteDrawingInfo {
+  drag_type: Option <DragType>,
+  selected: HashSet <SerialNumber>,
+}
 
 pub mod edited_note {
 use super::*;
@@ -52,7 +57,24 @@ impl EditedNote {
       element: js!{ return ($("<div>", {class: "note", "data-handletype": "note"}).appendTo ($("#notes"))); }
     }
   }
-  pub fn update_element(&self) {
+  pub fn update_element(&self, info: & NoteDrawingInfo) {
+    let mut exact_pitch = self.note.pitch as f64;
+    let mut rounded_pitch = exact_pitch;
+    let mut exact_start = self.note.start_time;
+    let mut rounded_start = exact_start;
+    if let Some(drag_type) = &info.drag_type {match drag_type {
+      DragType::MoveNotes (notes, movement) => {
+        if notes.contains (& self.serial_number) {
+          exact_pitch -= movement [1]/PIXELS_PER_SEMITONE;
+          rounded_pitch -= movement [1]/PIXELS_PER_SEMITONE;
+          exact_start += movement [0]/PIXELS_PER_TIME;
+          rounded_start += movement [0]/PIXELS_PER_TIME;
+        }
+      },
+      _=>(),
+    }}
+    rounded_pitch = rounded_pitch.round();
+    
     js!{
       let element =@{& self.element};
       element
@@ -60,8 +82,8 @@ impl EditedNote {
         .height(@{PIXELS_PER_SEMITONE})
         .attr("data-noteid", @{self.serial_number.0 as u32})
         .css({
-          left:@{self.note.start_time*PIXELS_PER_TIME},
-          bottom:@{self.note.pitch as f64*PIXELS_PER_SEMITONE}
+          left:@{exact_start*PIXELS_PER_TIME},
+          bottom:@{rounded_pitch as f64*PIXELS_PER_SEMITONE}
         });
     }
   }
@@ -151,7 +173,11 @@ pub struct State {
 
 impl State {
   pub fn update_elements (&self) {
-    for note in &self.notes {note.update_element()}
+    let info = NoteDrawingInfo {
+      drag_type: self.drag_type(),
+      selected: self.selected.clone(),
+    };
+    for note in &self.notes {note.update_element(& info)}
   }
   pub fn notes_changed (&self) {
     self.update_elements();
