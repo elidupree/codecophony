@@ -1,6 +1,6 @@
 use std::cell::Cell;
 
-#[derive (Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+#[derive (Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct SerialNumber (pub u64);
 
 impl Default for SerialNumber {

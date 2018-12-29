@@ -7,13 +7,16 @@ extern crate serde_json;
 extern crate serde;
 extern crate nalgebra;
 extern crate rand;
+#[macro_use] extern crate maplit;
+#[macro_use] extern crate derivative;
 
 use std::collections::HashSet;
 use std::cell::RefCell;
 
 use serde::Serialize;
 use stdweb::web::event::{MouseDownEvent, MouseMoveEvent, MouseUpEvent};
-use stdweb::web::{self, IEventTarget};
+use stdweb::web::{self, IEventTarget, HtmlElement};
+use stdweb::unstable::TryInto;
 use stdweb::traits::*;
 use nalgebra::Vector2;
 use rand::prelude::*;
@@ -46,7 +49,7 @@ impl EditedNote {
     EditedNote {
       note,
       serial_number: Default::default(),
-      element: js!{ return ($("<div>", {class: "note"}).appendTo ($("#notes"))); }
+      element: js!{ return ($("<div>", {class: "note", "data-handletype": "note"}).appendTo ($("#notes"))); }
     }
   }
   pub fn update_element(&self) {
@@ -69,27 +72,89 @@ impl EditedNote {
 
 use edited_note::EditedNote;
 
+#[derive (Debug)]
+pub enum DragType {
+  ClickNote (SerialNumber),
+  DragSelect,
+  MoveNotes (HashSet <SerialNumber>, Vector),
+  ExtendNotes (HashSet <SerialNumber>, f64),
+}
+
 pub struct DragState {
-  start: Vector,
-  
+  pub start_position: Vector,
+  pub start_note: Option<SerialNumber>,
+  pub start_handle_type: String,
+  pub ever_moved_much: bool,
+  //pub drag_type: DragType,
+}
+
+impl State {
+  pub fn drag_type (&self)->Option<DragType> {
+    self.mouse.drag.as_ref().map (|drag| {
+    let movement = self.mouse.position - drag.start_position;
+    
+    if let Some(start_note) = drag.start_note {
+      let what_notes = if self.selected.contains (& start_note) {
+        self.selected.clone()
+      }
+      else {
+        hashset!{start_note}
+      };
+      if !drag.ever_moved_much {
+        DragType::ClickNote (start_note)
+      }
+      else if &drag.start_handle_type == "note" {
+        DragType::MoveNotes (what_notes, movement)
+      }
+      else {
+        DragType::ExtendNotes (what_notes, movement [0])
+      }
+    }
+    else {
+      DragType::DragSelect
+    }
+    })
+  }
+}
+
+#[derive (Derivative)]
+#[derivative (Default)]
+pub struct MouseState {
+  pub drag: Option <DragState>,
+  #[derivative (Default (value = "Vector::new (0.0, 0.0)"))]
+  pub position: Vector,
 }
 
 thread_local! {
   static STATE: RefCell<State> = RefCell::default();
 }
 
-
+pub fn with_state<F: FnOnce(&State)->R, R> (callback: F)->R {
+  STATE.with (| state | {
+    let state = state.borrow();
+    (callback)(&state)
+  })
+}
+pub fn with_state_mut<F: FnOnce(&mut State)->R, R> (callback: F)->R {
+  STATE.with (| state | {
+    let mut state = state.borrow_mut();
+    (callback)(&mut state)
+  })
+}
 
 #[derive (Default)]
 pub struct State {
   pub notes: Vec<EditedNote>,
   pub selected: HashSet <SerialNumber>,
-  pub drag: Option <DragState>,
+  pub mouse: MouseState,
 }
 
 impl State {
-  pub fn notes_changed (&self) {
+  pub fn update_elements (&self) {
     for note in &self.notes {note.update_element()}
+  }
+  pub fn notes_changed (&self) {
+    self.update_elements();
     send_to_backend(&MessageToBackend::ReplacePlaybackScript(PlaybackScript {
       notes: self.notes.iter().map(|a|a.note.clone()).collect(),
       end: None,
@@ -99,40 +164,77 @@ impl State {
   }
 }
 
+fn mouse_position<E: IMouseEvent> (event: &E)-> Vector {
+  Vector::new (event.client_x() as f64, event.client_y() as f64)
+}
+
 fn mouse_down (event: MouseDownEvent) {
-  
-    let mousedown_other = || STATE.with (| state | {
-      let mut state = state.borrow_mut();
-      state.notes.push (EditedNote::new (Note {
-        start_time: rand::thread_rng().gen_range(0.0, 3.0),
-        duration: 0.3,
-        pitch: rand::thread_rng().gen_range(30, 80),
-      }));
-      state.notes_changed()
+  let position = mouse_position (& event);
+  let target: HtmlElement = event.target().unwrap().try_into().unwrap();
+  let note_id: Option<SerialNumber> = js! {
+    let closest = $(@{&target}).closest ("[data-noteid]");
+    //console.log(closest.attr("data-noteid"), closest);
+    return parseInt(closest.attr("data-noteid"));
+  }.try_into().ok().map (| number: u32 | SerialNumber (number as u64));
+  let handle_type = target.get_attribute ("data-handletype").unwrap_or_else(Default::default);
+  //eprintln!(" mousedown {:?}", note_id);
+  with_state_mut (| state | {
+    state.mouse.position = position;
+    state.mouse.drag = Some (DragState {
+      start_position: position,
+      start_note: note_id,
+      start_handle_type: handle_type,
+      ever_moved_much: false,
     });
-    
-    let mousedown_note = |id| STATE.with (| state | {
-      let id = SerialNumber(id);
-      let mut state = state.borrow_mut();
-      let note = state.notes.iter_mut().find(|a|a.serial_number == id).unwrap();
-      if random() {
-        note.note.pitch += 1;
-      }
-      else {
-        note.note.pitch -= 1;
-      }
-      state.notes_changed()
-    });
-    
-    js! {
-      var id = $(@{event.target()}).closest ("[data-noteid]").attr("data-noteid");
-      if (id !== undefined) {
-        @{mousedown_note}(parseInt(id));
-      }
-      else {
-        @{mousedown_other}();
+  });
+}
+fn mouse_move_impl (position: Vector, raising: bool) {
+  with_state_mut (| state | {
+    state.mouse.position = position;
+    if let Some(drag) = state.mouse.drag.as_mut() {
+      if (position - drag.start_position).norm() > 5.0 {
+        drag.ever_moved_much = true;
       }
     }
+    if state.mouse.drag.is_some() && !raising {
+      state.update_elements();
+    }
+  });
+}
+fn mouse_move (event: MouseMoveEvent) {
+  mouse_move_impl (mouse_position (& event), false);
+}
+fn mouse_up (event: MouseUpEvent) {
+  let position = mouse_position (& event);
+  mouse_move_impl (position, true);
+  //eprintln!(" mouseup ");
+  with_state_mut (| state | {
+    let mut notes_changed = false;
+    if let Some(drag_type) = state.drag_type() {
+      //eprintln!(" {:?} ", drag_type);
+      match drag_type {
+        DragType::ClickNote (id) => state.selected = hashset!{id},
+        DragType::MoveNotes (notes, movement) => {
+          let semitones = ((- movement [1])/PIXELS_PER_SEMITONE).round() as i32;
+          for note in state.notes.iter_mut() {
+            if notes.contains(&note.serial_number) {
+              note.note.pitch += semitones;
+              note.note.start_time += movement [0]/PIXELS_PER_TIME;
+            }
+          }
+          notes_changed = true;
+        },
+        _ => ()
+      }
+    }
+    state.mouse.drag = None;
+    if notes_changed {
+      state.notes_changed();
+    }
+    else {
+      state.update_elements();
+    }
+  });
 }
 
 fn send_to_backend<T: Serialize> (send: &T) {
@@ -192,6 +294,19 @@ backend.on("close", (code)=>{
   send_to_backend(&MessageToBackend::RestartPlaybackAt (Some(0.0)));
   
   web::document().body().unwrap().add_event_listener (mouse_down);
+  web::document().body().unwrap().add_event_listener (mouse_move);  
+  web::document().body().unwrap().add_event_listener (mouse_up);
+  
+  with_state_mut(|state| {
+    for _ in 0..10 {
+      state.notes.push (EditedNote::new (Note {
+        start_time: rand::thread_rng().gen_range(0.0, 3.0),
+        duration: 0.3,
+        pitch: rand::thread_rng().gen_range(30, 80),
+      }));
+    }
+    state.notes_changed();
+  });
   
   stdweb::event_loop();
 }
