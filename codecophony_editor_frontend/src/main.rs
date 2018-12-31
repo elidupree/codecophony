@@ -81,6 +81,21 @@ impl EditedNote {
     let width = self.note.duration * PIXELS_PER_TIME;
     let height = PIXELS_PER_SEMITONE;
     
+    let color;
+    let box_shadow;
+    if exact_pitch == rounded_pitch && exact_start == rounded_start {
+      color = "black";
+      box_shadow = "none".to_string();
+    } else {
+      color = "rgba(0,0,0,0.5)";
+      box_shadow = format! ("{}px {}px {}px {}",
+        info.state.time_to_client (rounded_start) - info.state.time_to_client (exact_start),
+        info.state.pitch_to_client (rounded_pitch) - info.state.pitch_to_client (exact_pitch),
+        PIXELS_PER_SEMITONE/4.0,
+        color,
+      ) ;
+    }
+    
     js!{
       let element =@{& self.element};
       element
@@ -90,7 +105,8 @@ impl EditedNote {
         .css({
           left:@{left},
           top:@{top},
-          "box-shadow": @{info.state.time_to_client (rounded_start) - info.state.time_to_client (exact_start)} + "px " + @{info.state.pitch_to_client (rounded_pitch) - info.state.pitch_to_client (exact_pitch)} + "px " + @{PIXELS_PER_SEMITONE/4.0} + " black",
+          "background-color": @{color},
+          "box-shadow": @{box_shadow},
         });
     }
   }
