@@ -83,9 +83,11 @@ impl EditedNote {
     
     let color;
     let box_shadow;
+    let transition;
     if exact_pitch == rounded_pitch && exact_start == rounded_start {
       color = "black";
       box_shadow = "none".to_string();
+      transition = "all 0.2s ease-out";
     } else {
       color = "rgba(0,0,0,0.5)";
       box_shadow = format! ("{}px {}px {}px {}",
@@ -94,6 +96,7 @@ impl EditedNote {
         PIXELS_PER_SEMITONE/4.0,
         color,
       ) ;
+      transition = "none";
     }
     
     js!{
@@ -107,6 +110,7 @@ impl EditedNote {
           top:@{top},
           "background-color": @{color},
           "box-shadow": @{box_shadow},
+          transition:@{transition},
         });
     }
   }
