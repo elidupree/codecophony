@@ -64,6 +64,7 @@ impl EditedNote {
     let mut rounded_pitch = exact_pitch;
     let mut exact_start = self.note.start_time;
     let mut rounded_start = exact_start;
+    let mut transition = "all 0.2s ease-out";;
     if let Some(drag_type) = &info.drag_type {match drag_type {
       DragType::MoveNotes {notes, exact_movement, rounded_movement} => {
         if notes.contains (& self.serial_number) {
@@ -71,23 +72,24 @@ impl EditedNote {
           rounded_pitch += rounded_movement [1];
           exact_start += exact_movement [0];
           rounded_start += rounded_movement [0];
+          transition = "none";
         }
       },
       _=>(),
     }}
     rounded_pitch = rounded_pitch.round();
     let left = info.state.time_to_client (exact_start);
-    let top = info.state.pitch_to_client (exact_pitch as f64 - 0.5);
+    let top = info.state.pitch_to_client (exact_pitch as f64 + 0.5);
     let width = self.note.duration * PIXELS_PER_TIME;
     let height = PIXELS_PER_SEMITONE;
     
     let color;
     let box_shadow;
-    let transition;
+    
     if exact_pitch == rounded_pitch && exact_start == rounded_start {
       color = "black";
       box_shadow = "none".to_string();
-      transition = "all 0.2s ease-out";
+      
     } else {
       color = "rgba(0,0,0,0.5)";
       box_shadow = format! ("{}px {}px {}px {}",
@@ -96,7 +98,6 @@ impl EditedNote {
         PIXELS_PER_SEMITONE/4.0,
         color,
       ) ;
-      transition = "none";
     }
     
     js!{
@@ -328,7 +329,7 @@ fn mouse_up (event: MouseUpEvent) {
       //eprintln!(" {:?} ", drag_type);
       match drag_type {
         DragType::ClickNote (id) => state.selected = hashset!{id},
-        DragType::MoveNotes {notes, exact_movement, rounded_movement} => {
+        DragType::MoveNotes {notes, exact_movement: _, rounded_movement} => {
           let semitones = (rounded_movement [1]).round() as i32;
           for note in state.notes.iter_mut() {
             if notes.contains(&note.serial_number) {
@@ -420,7 +421,20 @@ backend.on("close", (code)=>{
       }));
     }
     state.notes_changed();
+    
+    for octave in 0..10 {
+      for (index, black) in vec![false, true, false, false, true, false, true, false, false, true, false, true].into_iter().enumerate() {
+        let pitch = (octave*12 + index + 21) as f64;
+        if black {
+          js!{
+            $("#notes").append ($("<div>", {class: "key"}).css({top: @{state.pitch_to_client (pitch+0.5)}, height:@{PIXELS_PER_SEMITONE}, "background-color": "#ddd"}));
+          }
+        }
+      }
+    }
   });
+  
+  
   
   stdweb::event_loop();
 }
