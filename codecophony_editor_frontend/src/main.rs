@@ -42,6 +42,7 @@ pub mod edited_note {
 use super::*;
 use stdweb::Value;
 use shared::Note;
+use std::mem;
 
 pub struct EditedNote {
   pub note: Note,
@@ -52,11 +53,23 @@ pub struct EditedNote {
 
 
 impl EditedNote {
+  fn new_element() -> Value {
+    let result: Value = js!{ return ($("<div>", {class: "note", "data-handletype": "note"}).appendTo ($("#notes"))); };
+    result
+  }
   pub fn new (note: Note)->EditedNote {
     EditedNote {
       note,
       serial_number: Default::default(),
-      element: js!{ return ($("<div>", {class: "note", "data-handletype": "note"}).appendTo ($("#notes"))); }
+      element: Self::new_element()
+    }
+  }
+  pub fn new_stealing (note: Note, steal_from: &mut EditedNote)->EditedNote {
+    let element = mem::replace(&mut steal_from.element, Self::new_element());
+    EditedNote {
+      note,
+      serial_number: Default::default(),
+      element
     }
   }
   pub fn update_element(&self, info: & NoteDrawingInfo) {
@@ -66,7 +79,7 @@ impl EditedNote {
     let mut rounded_start = exact_start;
     let mut transition = "all 0.2s ease-out";;
     if let Some(drag_type) = &info.drag_type {match drag_type {
-      DragType::MoveNotes {notes, exact_movement, rounded_movement} => {
+      DragType::MoveNotes {notes, exact_movement, rounded_movement, copying} => {
         if notes.contains (& self.serial_number) {
           exact_pitch += exact_movement [1];
           rounded_pitch += rounded_movement [1];
@@ -126,7 +139,7 @@ use edited_note::EditedNote;
 pub enum DragType {
   ClickNote (SerialNumber),
   DragSelect {minima: Vector, maxima: Vector},
-  MoveNotes {notes: HashSet <SerialNumber>, exact_movement: Vector, rounded_movement: Vector},
+  MoveNotes {notes: HashSet <SerialNumber>, exact_movement: Vector, rounded_movement: Vector, copying: bool},
   ExtendNotes {notes: HashSet <SerialNumber>, exact_movement: f64, rounded_movement: f64},
 }
 
@@ -171,7 +184,7 @@ impl State {
             }
           }
         }
-        DragType::MoveNotes {notes, exact_movement, rounded_movement}
+        DragType::MoveNotes {notes, exact_movement, rounded_movement, copying: self.mouse.shift_key}
       }
       else {
         DragType::ExtendNotes {notes, exact_movement: exact_movement[0], rounded_movement: exact_movement [0]}
@@ -232,6 +245,8 @@ pub struct MouseState {
   pub drag: Option <DragState>,
   #[derivative (Default (value = "Vector::new (0.0, 0.0)"))]
   pub position: Vector,
+  pub shift_key: bool,
+  pub control_key: bool,
 }
 
 thread_local! {
@@ -303,25 +318,24 @@ fn mouse_down (event: MouseDownEvent) {
     });
   });
 }
-fn mouse_move_impl (position: Vector, raising: bool) {
+fn mouse_move (event: MouseMoveEvent) {
+  let position = mouse_position (& event);
   with_state_mut (| state | {
     state.mouse.position = position;
+    state.mouse.shift_key = event.shift_key();
+    state.mouse.control_key = event.ctrl_key();
     if let Some(drag) = state.mouse.drag.as_mut() {
       if (position - drag.start_position).norm() > 5.0 {
         drag.ever_moved_much = true;
       }
     }
-    if state.mouse.drag.is_some() && !raising {
+    if state.mouse.drag.is_some() {
       state.update_elements();
     }
   });
 }
-fn mouse_move (event: MouseMoveEvent) {
-  mouse_move_impl (mouse_position (& event), false);
-}
 fn mouse_up (event: MouseUpEvent) {
   let position = mouse_position (& event);
-  mouse_move_impl (position, true);
   //eprintln!(" mouseup ");
   with_state_mut (| state | {
     let mut notes_changed = false;
@@ -329,14 +343,24 @@ fn mouse_up (event: MouseUpEvent) {
       //eprintln!(" {:?} ", drag_type);
       match drag_type {
         DragType::ClickNote (id) => state.selected = hashset!{id},
-        DragType::MoveNotes {notes, exact_movement: _, rounded_movement} => {
+        DragType::MoveNotes {notes, exact_movement: _, rounded_movement, copying} => {
           let semitones = (rounded_movement [1]).round() as i32;
+          let mut new_notes = Vec::new();
           for note in state.notes.iter_mut() {
             if notes.contains(&note.serial_number) {
-              note.note.pitch += semitones;
-              note.note.start_time += rounded_movement [0];
+              if copying {
+                let mut new_note = note.note.clone();
+                new_note.pitch += semitones;
+                new_note.start_time += rounded_movement [0];
+                new_notes.push(EditedNote::new_stealing (new_note, note));
+              }
+              else {
+                note.note.pitch += semitones;
+                note.note.start_time += rounded_movement [0];
+              }
             }
           }
+          state.notes.extend (new_notes);
           notes_changed = true;
         },
         _ => ()
