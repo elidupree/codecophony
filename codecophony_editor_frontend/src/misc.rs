@@ -13,3 +13,8 @@ impl Default for SerialNumber {
     })
   }
 }
+
+
+pub fn min (first: f64, second: f64)->f64 {if first < second {first} else {second}}
+pub fn max (first: f64, second: f64)->f64 {if first > second {first} else {second}}
+pub fn abs (first: f64)->f64 {if first < 0.0 {-first} else {first}}

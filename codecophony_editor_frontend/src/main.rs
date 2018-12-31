@@ -25,15 +25,17 @@ use rand::prelude::*;
 use shared::{MessageToBackend,MessageToFrontend,PlaybackScript,Note};
 
 pub mod misc;
-use misc::SerialNumber;
+use misc::{SerialNumber, abs, min, max};
 
 type Vector = Vector2 <f64>;
 pub const PIXELS_PER_TIME: f64 = 100.0;
 pub const PIXELS_PER_SEMITONE: f64 = 8.0;
 
-pub struct NoteDrawingInfo {
+
+pub struct NoteDrawingInfo <'a> {
   drag_type: Option <DragType>,
   selected: HashSet <SerialNumber>,
+  state: & 'a State,
 }
 
 pub mod edited_note {
@@ -63,27 +65,32 @@ impl EditedNote {
     let mut exact_start = self.note.start_time;
     let mut rounded_start = exact_start;
     if let Some(drag_type) = &info.drag_type {match drag_type {
-      DragType::MoveNotes (notes, movement) => {
+      DragType::MoveNotes {notes, exact_movement, rounded_movement} => {
         if notes.contains (& self.serial_number) {
-          exact_pitch -= movement [1]/PIXELS_PER_SEMITONE;
-          rounded_pitch -= movement [1]/PIXELS_PER_SEMITONE;
-          exact_start += movement [0]/PIXELS_PER_TIME;
-          rounded_start += movement [0]/PIXELS_PER_TIME;
+          exact_pitch += exact_movement [1];
+          rounded_pitch += rounded_movement [1];
+          exact_start += exact_movement [0];
+          rounded_start += rounded_movement [0];
         }
       },
       _=>(),
     }}
     rounded_pitch = rounded_pitch.round();
+    let left = info.state.time_to_client (exact_start);
+    let top = info.state.pitch_to_client (exact_pitch as f64 - 0.5);
+    let width = self.note.duration * PIXELS_PER_TIME;
+    let height = PIXELS_PER_SEMITONE;
     
     js!{
       let element =@{& self.element};
       element
-        .width (@{self.note.duration*PIXELS_PER_TIME})
-        .height(@{PIXELS_PER_SEMITONE})
+        .width (@{width})
+        .height(@{height})
         .attr("data-noteid", @{self.serial_number.0 as u32})
         .css({
-          left:@{exact_start*PIXELS_PER_TIME},
-          bottom:@{rounded_pitch as f64*PIXELS_PER_SEMITONE}
+          left:@{left},
+          top:@{top},
+          "box-shadow": @{info.state.time_to_client (rounded_start) - info.state.time_to_client (exact_start)} + "px " + @{info.state.pitch_to_client (rounded_pitch) - info.state.pitch_to_client (exact_pitch)} + "px " + @{PIXELS_PER_SEMITONE/4.0} + " black",
         });
     }
   }
@@ -97,9 +104,9 @@ use edited_note::EditedNote;
 #[derive (Debug)]
 pub enum DragType {
   ClickNote (SerialNumber),
-  DragSelect,
-  MoveNotes (HashSet <SerialNumber>, Vector),
-  ExtendNotes (HashSet <SerialNumber>, f64),
+  DragSelect {minima: Vector, maxima: Vector},
+  MoveNotes {notes: HashSet <SerialNumber>, exact_movement: Vector, rounded_movement: Vector},
+  ExtendNotes {notes: HashSet <SerialNumber>, exact_movement: f64, rounded_movement: f64},
 }
 
 pub struct DragState {
@@ -113,10 +120,10 @@ pub struct DragState {
 impl State {
   pub fn drag_type (&self)->Option<DragType> {
     self.mouse.drag.as_ref().map (|drag| {
-    let movement = self.mouse.position - drag.start_position;
+    let exact_movement = self.client_to_music (self.mouse.position) - self.client_to_music (drag.start_position);
     
     if let Some(start_note) = drag.start_note {
-      let what_notes = if self.selected.contains (& start_note) {
+      let notes = if self.selected.contains (& start_note) {
         self.selected.clone()
       }
       else {
@@ -126,16 +133,75 @@ impl State {
         DragType::ClickNote (start_note)
       }
       else if &drag.start_handle_type == "note" {
-        DragType::MoveNotes (what_notes, movement)
+        let rounded_for_note = | note: SerialNumber | {
+          let note = & self.get_note (note).unwrap().note;
+          Vector::new (
+            self.round_time (note.start_time + exact_movement [0]) - note.start_time,
+            self.round_pitch (note.pitch as f64 + exact_movement [1]) - note.pitch as f64,
+          )
+        };
+        let mut iterator = notes.iter().cloned();
+        let mut rounded_movement = rounded_for_note (iterator.next().unwrap());
+        for note in iterator {
+          let rounded = rounded_for_note (note) ;
+          for dimension in 0..2 {
+            if abs (rounded [dimension] - exact_movement [dimension]) < abs (rounded_movement [dimension] - exact_movement [dimension]) {
+              rounded_movement [dimension] = rounded [dimension];
+            }
+          }
+        }
+        DragType::MoveNotes {notes, exact_movement, rounded_movement}
       }
       else {
-        DragType::ExtendNotes (what_notes, movement [0])
+        DragType::ExtendNotes {notes, exact_movement: exact_movement[0], rounded_movement: exact_movement [0]}
       }
     }
     else {
-      DragType::DragSelect
+      let music_start = self.client_to_music (drag.start_position);
+      let music_stop = self.client_to_music (self.mouse.position) ;
+      DragType::DragSelect {
+        minima: Vector::new (
+          min (music_start [0], music_stop [0]),
+          min (music_start [1], music_stop [1]),
+        ),
+        maxima: Vector::new (
+          max (music_start [0], music_stop [0]),
+          max (music_start [1], music_stop [1]),
+        ),
+      }
     }
     })
+  }
+  
+  pub fn get_note (&self, id: SerialNumber)->Option<& EditedNote> {
+    self.notes.iter().find (| note | note.serial_number == id)
+  }
+  
+  pub fn client_to_time (&self, client: f64)->f64 {
+    client / PIXELS_PER_TIME
+  }
+  pub fn client_to_pitch (&self, client: f64)->f64 {
+    (client / -PIXELS_PER_SEMITONE) + 101.5
+  }
+  pub fn time_to_client (&self, time: f64)->f64 {
+    time * PIXELS_PER_TIME
+  }
+  pub fn pitch_to_client (&self, pitch: f64)->f64 {
+    (pitch - 101.5) * -PIXELS_PER_SEMITONE
+  }
+  
+  pub fn music_to_client (&self, music: Vector)->Vector {
+    Vector::new (self.time_to_client (music [0]), self.pitch_to_client (music [1]))
+  }
+  pub fn client_to_music (&self, client: Vector)->Vector {
+    Vector::new (self.client_to_time (client[0]), self.client_to_pitch (client[1]))
+  }
+  
+  pub fn round_time (&self, time: f64)->f64 {
+    (time*8.0).round()/8.0
+  }
+  pub fn round_pitch (&self, pitch: f64)->f64 {
+    pitch.round()
   }
 }
 
@@ -173,9 +239,11 @@ pub struct State {
 
 impl State {
   pub fn update_elements (&self) {
+    js!{ $("#notes").height (@{PIXELS_PER_SEMITONE*80.0 }); }
     let info = NoteDrawingInfo {
       drag_type: self.drag_type(),
       selected: self.selected.clone(),
+      state: & self,
     };
     for note in &self.notes {note.update_element(& info)}
   }
@@ -240,12 +308,12 @@ fn mouse_up (event: MouseUpEvent) {
       //eprintln!(" {:?} ", drag_type);
       match drag_type {
         DragType::ClickNote (id) => state.selected = hashset!{id},
-        DragType::MoveNotes (notes, movement) => {
-          let semitones = ((- movement [1])/PIXELS_PER_SEMITONE).round() as i32;
+        DragType::MoveNotes {notes, exact_movement, rounded_movement} => {
+          let semitones = (rounded_movement [1]).round() as i32;
           for note in state.notes.iter_mut() {
             if notes.contains(&note.serial_number) {
               note.note.pitch += semitones;
-              note.note.start_time += movement [0]/PIXELS_PER_TIME;
+              note.note.start_time += rounded_movement [0];
             }
           }
           notes_changed = true;
