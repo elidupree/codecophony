@@ -11,6 +11,7 @@
     <script>
       // You can also require other files to run in this process
       window.$ = require('./jquery-3.3.1.js')
+      window.writeFileAtomic = require('write-file-atomic')
       require('../target/asmjs-unknown-emscripten/debug/codecophony_editor_frontend.js')
     </script>
   </body>

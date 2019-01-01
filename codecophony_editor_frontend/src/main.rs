@@ -291,6 +291,14 @@ impl State {
       loop_back_to: None,
     }));
     send_to_backend(&MessageToBackend::RestartPlaybackAt (Some(0.0)));
+    js!{
+      writeFileAtomic ("codecophony_autosave", @{self.serialized_notes()}, function(err) {
+        if (err) throw err;
+      });
+    }
+  }
+  pub fn serialized_notes (&self)->String {
+    serde_json::to_string_pretty (& self.notes.iter().map (| note | &note.note).collect::<Vec<_>>()).unwrap()
   }
 }
 
