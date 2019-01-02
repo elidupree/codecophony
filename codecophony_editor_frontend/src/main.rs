@@ -130,6 +130,12 @@ impl EditedNote {
   }
 }
 
+impl Drop for EditedNote {
+  fn drop(&mut self) {
+    js!{@{&self.element}.remove();}
+  }
+}
+
 
 }
 
@@ -283,7 +289,7 @@ impl State {
     };
     for note in &self.notes {note.update_element(& info)}
   }
-  pub fn notes_changed (&self) {
+  pub fn notes_changed (&self, save: bool) {
     self.update_elements();
     send_to_backend(&MessageToBackend::ReplacePlaybackScript(PlaybackScript {
       notes: self.notes.iter().map(|a|a.note.clone()).collect(),
@@ -291,14 +297,24 @@ impl State {
       loop_back_to: None,
     }));
     send_to_backend(&MessageToBackend::RestartPlaybackAt (Some(0.0)));
-    js!{
+    if save {js!{
       writeFileAtomic ("codecophony_autosave", @{self.serialized_notes()}, function(err) {
         if (err) throw err;
       });
-    }
+    }}
   }
   pub fn serialized_notes (&self)->String {
     serde_json::to_string_pretty (& self.notes.iter().map (| note | &note.note).collect::<Vec<_>>()).unwrap()
+  }
+}
+
+
+fn load_json (input: String) {
+  if let Ok (notes) = serde_json::from_str::<Vec<Note>> (& input) {
+    with_state_mut (| state | {
+      state.notes = notes.into_iter().map (| note | EditedNote::new (note)).collect();
+      state.notes_changed(false);
+    });
   }
 }
 
@@ -376,7 +392,7 @@ fn mouse_up (event: MouseUpEvent) {
     }
     state.mouse.drag = None;
     if notes_changed {
-      state.notes_changed();
+      state.notes_changed(true);
     }
     else {
       state.update_elements();
@@ -452,7 +468,7 @@ backend.on("close", (code)=>{
         pitch: rand::thread_rng().gen_range(30, 80),
       }));
     }
-    state.notes_changed();
+    state.notes_changed(false);
     
     for octave in 0..10 {
       for (index, black) in vec![false, true, false, false, true, false, true, false, false, true, false, true].into_iter().enumerate() {
@@ -466,7 +482,13 @@ backend.on("close", (code)=>{
     }
   });
   
-  
+  js! {
+    window.fs.readFile("codecophony_autosave", "utf8", function(err, data) {
+      if (!err) {
+        @{load_json}(data);
+      }
+    });
+  }
   
   stdweb::event_loop();
 }
