@@ -488,6 +488,15 @@ backend.on("close", (code)=>{
         @{load_json}(data);
       }
     });
+    
+    window.midi_input = new window.midi.input();
+    window.midi_input.on ("message", function (delta_time, message) {
+      console.log (message);
+    });
+    
+    console.log("ports", window.midi_input.getPortCount());
+    console.log("first", window.midi_input.getPortName(0));
+    window.midi_input.openPort(0);
   }
   
   stdweb::event_loop();
