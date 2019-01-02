@@ -13,6 +13,9 @@
       window.$ = require('./jquery-3.3.1.js')
       window.writeFileAtomic = require('write-file-atomic')
       window.fs = require('fs')
+      window.os = require('os')
+      window.path = require('path')
+      window.autosave_path = path.join(os.homedir(), ".codecophony_autosave")
       require('../target/asmjs-unknown-emscripten/debug/codecophony_editor_frontend.js')
     </script>
   </body>

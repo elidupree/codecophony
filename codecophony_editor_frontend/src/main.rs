@@ -298,7 +298,7 @@ impl State {
     }));
     send_to_backend(&MessageToBackend::RestartPlaybackAt (Some(0.0)));
     if save {js!{
-      writeFileAtomic ("codecophony_autosave", @{self.serialized_notes()}, function(err) {
+      writeFileAtomic (window.autosave_path, @{self.serialized_notes()}, function(err) {
         if (err) throw err;
       });
     }}
@@ -483,7 +483,7 @@ backend.on("close", (code)=>{
   });
   
   js! {
-    window.fs.readFile("codecophony_autosave", "utf8", function(err, data) {
+    window.fs.readFile(window.autosave_path, "utf8", function(err, data) {
       if (!err) {
         @{load_json}(data);
       }
