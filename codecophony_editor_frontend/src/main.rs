@@ -144,7 +144,7 @@ use edited_note::EditedNote;
 #[derive (Debug)]
 pub enum DragType {
   ClickNote (SerialNumber),
-  DragSelect {minima: Vector, maxima: Vector},
+  DragSelect {minima: Vector, maxima: Vector, notes: HashSet <SerialNumber>},
   MoveNotes {notes: HashSet <SerialNumber>, exact_movement: Vector, rounded_movement: Vector, copying: bool},
   ExtendNotes {notes: HashSet <SerialNumber>, exact_movement: f64, rounded_movement: f64},
 }
@@ -199,15 +199,19 @@ impl State {
     else {
       let music_start = self.client_to_music (drag.start_position);
       let music_stop = self.client_to_music (self.mouse.position) ;
-      DragType::DragSelect {
-        minima: Vector::new (
+      let minima = Vector::new (
           min (music_start [0], music_stop [0]),
           min (music_start [1], music_stop [1]),
-        ),
-        maxima: Vector::new (
+        );
+      let maxima = Vector::new (
           max (music_start [0], music_stop [0]),
           max (music_start [1], music_stop [1]),
-        ),
+        );
+      DragType::DragSelect {
+        minima, maxima, notes: self.notes.iter().filter (| note | {
+          note.note.start_time <= maxima [0] && note.note.start_time + note.note.duration >= minima [0] &&
+          note.note.pitch as f64 - 0.5 <= maxima [1] && note.note.pitch as f64 + 0.5 >= minima [1]
+        }).map (| note | note.serial_number).collect()
       }
     }
     })
@@ -287,6 +291,17 @@ impl State {
       selected: self.selected.clone(),
       state: & self,
     };
+    js!{ $(".drag_select").remove() ;}
+    if let Some(DragType::DragSelect {minima, maxima, ..}) = info.drag_type {
+      let minima = self.music_to_client (minima);
+      let size = self.music_to_client (maxima) - minima;
+      js!{ $("<div>", {class: "drag_select"}).appendTo ($("#notes")).css ({
+        left:@{minima [0]},
+        top:@{minima [1]},
+        width:@{size[0]},
+        height:@{size[1]},
+      });}
+    }
     for note in &self.notes {note.update_element(& info)}
   }
   pub fn notes_changed (&self, save: bool) {
@@ -387,6 +402,9 @@ fn mouse_up (event: MouseUpEvent) {
           state.notes.extend (new_notes);
           notes_changed = true;
         },
+        DragType::DragSelect {notes, ..} => {
+          state.selected = notes
+        }
         _ => ()
       }
     }

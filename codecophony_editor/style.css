@@ -24,3 +24,7 @@ body {
   width: 100%;
   z-index: -1;
 }
+
+.drag_select {
+  background-color: rgba(0,0,255,0.3);
+}
