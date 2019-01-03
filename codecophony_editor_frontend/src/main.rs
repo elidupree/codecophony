@@ -294,12 +294,13 @@ impl State {
     js!{ $(".drag_select").remove() ;}
     if let Some(DragType::DragSelect {minima, maxima, ..}) = info.drag_type {
       let minima = self.music_to_client (minima);
-      let size = self.music_to_client (maxima) - minima;
+      let maxima = self.music_to_client (maxima);
+      let size = maxima - minima;
       js!{ $("<div>", {class: "drag_select"}).appendTo ($("#notes")).css ({
         left:@{minima [0]},
-        top:@{minima [1]},
+        top:@{maxima [1]},
         width:@{size[0]},
-        height:@{size[1]},
+        height:@{-size[1]},
       });}
     }
     for note in &self.notes {note.update_element(& info)}
@@ -368,9 +369,7 @@ fn mouse_move (event: MouseMoveEvent) {
         drag.ever_moved_much = true;
       }
     }
-    if state.mouse.drag.is_some() {
-      state.update_elements();
-    }
+    state.update_elements();
   });
 }
 fn mouse_up (event: MouseUpEvent) {
