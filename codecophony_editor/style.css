@@ -30,3 +30,8 @@ body {
   background-color: rgba(0,0,255,0.3);
   z-index: -1;
 }
+
+.selected,.selecting {
+  border: 2px solid blue;
+  margin: -2px;
+}

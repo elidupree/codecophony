@@ -32,7 +32,6 @@ impl State {
     js!{ $("#notes").height (@{PIXELS_PER_SEMITONE*80.0 }); }
     let info = NoteDrawingInfo {
       drag_type: self.drag_type(),
-      selected: self.selected.clone(),
       state: & self,
     };
     js!{ $(".drag_select").remove() ;}

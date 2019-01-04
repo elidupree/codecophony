@@ -113,8 +113,8 @@ fn mouse_move (event: MouseMoveEvent) {
     state.update_elements();
   });
 }
-fn mouse_up (event: MouseUpEvent) {
-  let position = mouse_position (& event);
+fn mouse_up (_event: MouseUpEvent) {
+  //let position = mouse_position (& event);
   //eprintln!(" mouseup ");
   with_state_mut (| state | {
     let mut notes_changed = false;

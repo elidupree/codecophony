@@ -1,5 +1,4 @@
 use std::mem;
-use std::collections::HashSet;
 
 use stdweb::Value;
 
@@ -11,7 +10,6 @@ use draw::{PIXELS_PER_SEMITONE, PIXELS_PER_TIME};
 
 pub struct NoteDrawingInfo <'a> {
   pub drag_type: Option <DragType>,
-  pub selected: HashSet <SerialNumber>,
   pub state: & 'a State,
 }
 
@@ -48,7 +46,9 @@ impl EditedNote {
     let mut rounded_pitch = exact_pitch;
     let mut exact_start = self.note.start_time;
     let mut rounded_start = exact_start;
-    let mut transition = "all 0.2s ease-out";;
+    let mut transition = "all 0.2s ease-out";
+    let selected = info.state.selected.contains (& self.serial_number);
+    let mut selecting = false;
     if let Some(drag_type) = &info.drag_type {match drag_type {
       DragType::MoveNotes {notes, exact_movement, rounded_movement, copying} => {
         if notes.contains (& self.serial_number) {
@@ -57,6 +57,11 @@ impl EditedNote {
           exact_start += exact_movement [0];
           rounded_start += rounded_movement [0];
           transition = "none";
+        }
+      },
+      DragType::DragSelect {notes,..} => {
+        if notes.contains (& self.serial_number) {
+          selecting = true;
         }
       },
       _=>(),
@@ -84,6 +89,8 @@ impl EditedNote {
       ) ;
     }
     
+    
+    
     js!{
       let element =@{& self.element};
       element
@@ -97,6 +104,8 @@ impl EditedNote {
           "box-shadow": @{box_shadow},
           transition:@{transition},
         });
+      if (@{selected}) {element.addClass ("selected");} else {element.removeClass ("selected");}
+      if (@{selecting}) {element.addClass ("selecting");} else {element.removeClass ("selecting");}
     }
   }
 }
