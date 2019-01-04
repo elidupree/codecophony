@@ -1,4 +1,5 @@
 use std::cell::Cell;
+use nalgebra::Vector2;
 
 #[derive (Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct SerialNumber (pub u64);
@@ -18,3 +19,6 @@ impl Default for SerialNumber {
 pub fn min (first: f64, second: f64)->f64 {if first < second {first} else {second}}
 pub fn max (first: f64, second: f64)->f64 {if first > second {first} else {second}}
 pub fn abs (first: f64)->f64 {if first < 0.0 {-first} else {first}}
+
+pub type Vector = Vector2 <f64>;
+
