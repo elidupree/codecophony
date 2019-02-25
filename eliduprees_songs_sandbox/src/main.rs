@@ -11,17 +11,20 @@ extern crate ordered_float;
 use codecophony::*;
 use dsp::Frame;
 
-mod sandbox;
+//mod sandbox;
+mod procedural_generation_1;
 
-use sandbox::{SAMPLE_HZ, CHANNELS, Output};
+//use sandbox::{SAMPLE_HZ, CHANNELS, Output};
+use procedural_generation_1::{SAMPLE_HZ, CHANNELS, Output};
 
 fn main() {
 //write_eggs ();
 //write_palette ();
   //loop {::std::thread::sleep(::std::time::Duration::from_millis(16));}
   
-  ///*
-  let (notes,_) = sandbox::current_playground();
+  // /*
+  //let (notes,_) = sandbox::current_playground();
+  let notes = procedural_generation_1::generate_music();
   
   let spec = hound::WavSpec {
       channels: CHANNELS as u16,
