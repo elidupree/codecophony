@@ -52,7 +52,45 @@ fn random_timbre (generator: &mut ChaChaRng)->Timbre {
 
 pub fn generate_music()->Box <Renderable<[Output; CHANNELS]>> {
   let mut generator = rand::chacha::ChaChaRng::from_seed(&[35]);
-  let notes: Vec<_> = (0..500).map (| index | Note {start: index, duration: 1, timbre: random_timbre (&mut generator)}.to_renderable (0.25, 0.6)).collect();
+  //let notes: Vec<_> = (0..500).map (| index | Note {start: index, duration: 1, timbre: random_timbre (&mut generator)}.to_renderable (0.25, 0.6)).collect();
+  
+  struct Place {
+    note: Note,
+    changed: bool,
+  }
+  
+  let mut notes: Vec<Place> = Vec::new();
+  for index in 0..500 {
+    let mut ancestors = Vec::new();
+    let mut max_level = 0;
+    for level in 0.. {
+      if index & (1<<level) != 0 {
+        ancestors.push((index - (1<<level), level))
+      }
+      if index < (1<<level) {
+        max_level = level;
+        break;
+      }
+    }
+    let mut changed = false;
+    let mut new_timbre = match ancestors.pop() {
+      Some((a, _l)) => notes [a].note.timbre.clone(),
+      None => random_timbre (&mut generator)
+    };
+    for (ancestor, level) in ancestors.into_iter().rev() {
+      if notes [ancestor].changed && generator.gen_range(0, 5) < level {
+        new_timbre = notes [ancestor].note.timbre.clone();
+        changed = true;
+      }
+    }
+    if generator.gen_range(0, max_level+1) < 2 {
+      new_timbre = random_timbre (&mut generator);
+      changed = true;
+    }
+    notes.push (Place{changed, note: Note {start: index as i32, duration: 2, timbre: new_timbre}});
+  }
+  
+  let notes: Vec<_> = notes.into_iter().map (| note | note.note.to_renderable(1.0/8.0, 0.6)).collect();
   Box::new (notes)
 }
 
