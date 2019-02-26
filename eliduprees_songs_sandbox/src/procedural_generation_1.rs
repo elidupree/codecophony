@@ -78,12 +78,12 @@ pub fn generate_music()->Box <Renderable<[Output; CHANNELS]>> {
       None => random_timbre (&mut generator)
     };
     for (ancestor, level) in ancestors.into_iter().rev() {
-      if notes [ancestor].changed && generator.gen_range(0, 5) < level {
+      if notes [ancestor].changed && generator.gen_range(0, 1<<level) != 0 {
         new_timbre = notes [ancestor].note.timbre.clone();
         changed = true;
       }
     }
-    if generator.gen_range(0, max_level+1) < 2 {
+    if generator.gen_range(0, 12) < 4 {
       new_timbre = random_timbre (&mut generator);
       changed = true;
     }
