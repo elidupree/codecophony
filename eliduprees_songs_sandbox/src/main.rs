@@ -1,12 +1,4 @@
-extern crate codecophony;
-extern crate hound;
-extern crate portaudio;
-extern crate dsp;
-extern crate rand;
-extern crate serde;
-#[macro_use]
-extern crate serde_derive;
-extern crate ordered_float;
+#[macro_use] extern crate serde_derive;
 
 use codecophony::*;
 use dsp::Frame;
@@ -15,7 +7,7 @@ use dsp::Frame;
 mod procedural_generation_1;
 
 //use sandbox::{SAMPLE_HZ, CHANNELS, Output};
-use procedural_generation_1::{SAMPLE_HZ, CHANNELS, Output};
+use self::procedural_generation_1::{SAMPLE_HZ, CHANNELS, Output};
 
 fn main() {
 //write_eggs ();

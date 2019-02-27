@@ -1,5 +1,8 @@
 use codecophony::*;
 use rand::{self, Rng, SeedableRng, ChaChaRng};
+use std::collections::BTreeMap;
+use siphasher::sip::SipHasher;
+use std::hash::{Hash, Hasher};
 
 pub const SAMPLE_HZ: f64 = 44100.0;
 pub const CHANNELS: usize = 2;
@@ -33,7 +36,7 @@ impl Note {
 } 
 
 use std::cmp::{min,max};
-fn random_timbre (generator: &mut ChaChaRng)->Timbre {
+fn random_timbre <G: Rng> (generator: &mut G)->Timbre {
   if generator.gen() {
     let mut instrument = generator.gen_range(35, 83);
     while instrument == 58 || instrument == 71 || instrument == 72 { instrument = generator.gen_range(35, 83); }
@@ -50,17 +53,82 @@ fn random_timbre (generator: &mut ChaChaRng)->Timbre {
   }
 }
 
+//dff
+
+
+#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
+struct NotesSelector {
+  probability: u64,
+  seed: u64,
+}
+
+#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
+enum PlaceChange {
+  DeleteNotes (NotesSelector),
+  CreateNote (Timbre),
+}
+
+#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
+struct Pattern {
+  start: u64,
+  fixed_levels: u64,
+  ordering: u64,
+}
+
+#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
+struct PlaceChangePattern {
+  change: PlaceChange,
+  pattern: Pattern,
+}
+
+#[derive (Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Default)]
+struct PlaceData {
+  changes: BTreeMap<u64, PlaceChangePattern>,
+  //notes: Vec<Note>,
+}
+
+
+
+impl NotesSelector {
+  fn applies_to (&self, note: & Note)->bool {
+    let mut hasher = SipHasher::new();
+    self.seed.hash (&mut hasher);
+    note.timbre.hash (&mut hasher);
+    hasher.finish() <self.probability
+  }
+}
+
+impl PlaceChange {
+  fn apply (&self, time: u64, notes: &mut Vec<Note>) {
+    match self {
+      PlaceChange::CreateNote (timbre) => {
+        notes.push (Note {start: time as i32, duration: 2, timbre: timbre.clone()});
+      },
+      PlaceChange::DeleteNotes (selector) => {
+        notes.retain (| note |!selector.applies_to (note));
+      },
+    }
+  }
+}
+
+
+fn random_place_change <G: Rng> (generator: &mut G)->PlaceChange {
+  if generator.gen() {
+    PlaceChange::CreateNote (random_timbre (generator))
+  } else {
+    PlaceChange::DeleteNotes (NotesSelector {
+      probability: generator.gen(),
+      seed: generator.gen(),
+    })
+  }
+}
+
 pub fn generate_music()->Box <Renderable<[Output; CHANNELS]>> {
-  let mut generator = rand::chacha::ChaChaRng::from_seed(&[35]);
+  let mut generator = ChaChaRng::from_seed(&[35]);
   //let notes: Vec<_> = (0..500).map (| index | Note {start: index, duration: 1, timbre: random_timbre (&mut generator)}.to_renderable (0.25, 0.6)).collect();
   
-  struct Place {
-    note: Note,
-    changed: bool,
-  }
-  
-  let mut notes: Vec<Place> = Vec::new();
-  for index in 0..500 {
+  let mut places: Vec<PlaceData> = Vec::new();
+  for index in 0..512 {
     let mut ancestors = Vec::new();
     let mut max_level = 0;
     for level in 0.. {
@@ -72,25 +140,37 @@ pub fn generate_music()->Box <Renderable<[Output; CHANNELS]>> {
         break;
       }
     }
-    let mut changed = false;
-    let mut new_timbre = match ancestors.pop() {
-      Some((a, _l)) => notes [a].note.timbre.clone(),
-      None => random_timbre (&mut generator)
-    };
+    let mut new_data = PlaceData::default();
     for (ancestor, level) in ancestors.into_iter().rev() {
-      if notes [ancestor].changed && generator.gen_range(0, 1<<level) != 0 {
-        new_timbre = notes [ancestor].note.timbre.clone();
-        changed = true;
+      for (_, change) in & places [ancestor].changes {
+        if change.pattern.fixed_levels & (1 << level) == 0 {
+          new_data.changes.insert (change.pattern.ordering, change.clone());
+        }
       }
     }
-    if generator.gen_range(0, 12) < 4 {
-      new_timbre = random_timbre (&mut generator);
-      changed = true;
+    
+    for _ in 0..100 {
+      let fixed_levels: u64 = generator.gen();
+      if index as u64 & fixed_levels != index as u64 {continue}
+      let pattern = PlaceChangePattern {
+        change: random_place_change (&mut generator),
+        pattern: Pattern {start: index as u64, fixed_levels, ordering: generator.gen()},
+      };
+      new_data.changes.insert (pattern.pattern.ordering, pattern);
     }
-    notes.push (Place{changed, note: Note {start: index as i32, duration: 2, timbre: new_timbre}});
+    
+    places.push (new_data);
   }
   
-  let notes: Vec<_> = notes.into_iter().map (| note | note.note.to_renderable(1.0/8.0, 0.6)).collect();
+  let mut notes = Vec::new();
+  for (time, place) in places.into_iter().enumerate() {
+    let mut notes_here = Vec::new();
+    for (_, change) in & place.changes {
+      change.change.apply (time as u64, &mut notes_here) ;
+    }
+    notes.extend (notes_here);
+  }
+  let notes: Vec<_> = notes.into_iter().map (| note| note.to_renderable(1.0/8.0, 0.6)).collect();
   Box::new (notes)
 }
 
