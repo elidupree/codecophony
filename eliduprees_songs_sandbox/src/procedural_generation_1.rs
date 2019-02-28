@@ -113,11 +113,11 @@ impl PlaceChange {
 
 
 fn random_place_change <G: Rng> (generator: &mut G)->PlaceChange {
-  if generator.gen() {
+  if generator.gen_range(0, 8) < 6 {
     PlaceChange::CreateNote (random_timbre (generator))
   } else {
     PlaceChange::DeleteNotes (NotesSelector {
-      probability: generator.gen(),
+      probability: 1u64<<63,
       seed: generator.gen(),
     })
   }
@@ -152,10 +152,16 @@ pub fn generate_music()->Box <Renderable<[Output; CHANNELS]>> {
     for _ in 0..100 {
       let fixed_levels: u64 = generator.gen();
       if index as u64 & fixed_levels != index as u64 {continue}
-      let pattern = PlaceChangePattern {
+      let mut pattern = PlaceChangePattern {
         change: random_place_change (&mut generator),
         pattern: Pattern {start: index as u64, fixed_levels, ordering: generator.gen()},
       };
+      if index & 1 != 0 && generator.gen() {
+        pattern.change = PlaceChange::DeleteNotes (NotesSelector {
+      probability: 1u64<<63,
+      seed: generator.gen(),
+    });
+      }
       new_data.changes.insert (pattern.pattern.ordering, pattern);
     }
     
