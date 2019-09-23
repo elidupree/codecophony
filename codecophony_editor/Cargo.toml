@@ -8,3 +8,12 @@ edition = "2018"
 
 [dependencies]
 codecophony = {path="../codecophony"}
+serde = {version = "1.0", features = ["derive"]}
+serde_json = "1.0"
+portaudio = "0.7"
+dsp-chain = "0.13"
+rocket = "0.4.2"
+rocket_contrib = { version = "0.4.2", features = ["json"]}
+typed-html = "0.2.1"
+parking_lot = "0.9"
+ordered-float = { version = "1.0", features = ["serde"] }
