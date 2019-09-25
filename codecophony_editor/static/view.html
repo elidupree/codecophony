@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Codecophony</title>
+<style>
+/* CSS reset */
+html,body,div,dl,dt,dd,ul,ol,li,h1,h2,h3,h4,h5,h6,pre,code,form,fieldset,legend,input,button,textarea,select,p,blockquote,th,td{margin:0;padding:0}
+h1,h2,h3,h4,h5,h6{font-size:100%;font-weight:inherit;}
+img{color:transparent;font-size:0;border:0;vertical-align:middle;}
+
+html,body {
+  height: 100%;
+  width: 100%;
+  user-select: none;
+}
+
+body {
+  position: relative;
+}
+
+.note {
+  position: absolute;
+  background-color: black;
+  z-index: 1;
+}
+
+.key {
+  position: absolute;
+  width: 100%;
+  z-index: -2;
+}
+
+.drag_select {
+  position: absolute;
+  background-color: rgba(0,0,255,0.3);
+  z-index: -1;
+}
+
+.selected,.selecting {
+  border: 2px solid blue;
+  margin: -2px;
+}
+</style>
+  </head>
+  <body>
+    <div>
+      <div id="content">
+      
+      </div>
+    </div>
+    <script src="/media/lodash.js"></script>
+    <script src="/media/jquery-3.2.1.min.js"></script>
+    <script src="/media/morphdom-umd.js"></script>
+    <script>
+        function frame() {
+          $.get({
+            url: "/views/1/content",
+          })
+            .done ((response) => {
+              morphdom ($("#content") [0], response);
+            })
+            .always (() => {
+              requestAnimationFrame (frame);
+            });
+        }
+        
+        frame();
+    </script>
+  </body>
+</html>

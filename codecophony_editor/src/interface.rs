@@ -43,7 +43,7 @@ impl View {
           top: {}px;
           width: {}px;
           height: {}px;
-        ", note.start_time*100.0, 1000.0 - note.pitch*15.0, note.duration*100.0, 15.0);
+        ", note.start_time*100.0, (100.0 - note.pitch)*15.0, note.duration*100.0, 15.0);
         html! {
           <div class="note" data-uuid={note.uuid.to_string()} style={style}>
             
