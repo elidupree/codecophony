@@ -11,6 +11,7 @@ use portaudio::{StreamCallbackResult, Stream, NonBlocking};
 use ordered_float::NotNan;
 
 use codecophony::{FrameTime, FluidsynthDirectlyRenderableMIDINote, FluidsynthDirectlyRenderableMIDIInstrument};
+use crate::data::Note;
 
 type Output = f32;
 const CHANNELS: usize = 2;
@@ -25,21 +26,10 @@ type Frame = [Output; CHANNELS];
 fn note_frames(note: & Note)->Arc <[Frame]> {
   codecophony::with_rendered_midi_note (& FluidsynthDirectlyRenderableMIDINote {
     duration: NotNan::new(note.duration).unwrap(),
-    pitch: note.pitch,
+    pitch: note.pitch.round() as i32,
     velocity: 100,
     instrument: FluidsynthDirectlyRenderableMIDIInstrument::pitched (1),
   }, SAMPLE_HZ, | frames| frames.clone())
-}
-
-#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
-pub struct Note {
-  pub start_time: f64,
-  pub duration: f64,
-  pub pitch: i32,
-}
-
-impl Note {
-  pub fn end_time(&self)->f64 {self.start_time + self.duration}
 }
 
 

@@ -5,6 +5,7 @@ extern crate rocket;
 
 use std::path::PathBuf;
 
+mod data;
 mod interface;
 mod rendering;
 
