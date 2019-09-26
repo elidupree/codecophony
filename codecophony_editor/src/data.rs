@@ -37,14 +37,41 @@ pub struct Chunk {
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug, Default)]
 pub struct View {
   pub selected: HashSet <Uuid>,
-  #[serde (skip)]
-  pub mouse: MouseState,
 }
 
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
 pub struct Project {
   pub chunks: HashMap <Uuid, Chunk>,
   pub views: HashMap <String, View>,
+  #[serde (skip)]
+  pub mouse: MouseState,
+}
+
+
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug, Derivative)]
+#[derivative (Default)]
+pub struct MousePosition {
+  #[derivative (Default (value = "Vector::new (0.0, 0.0)"))]
+  pub client_position: Vector,
+  #[derivative (Default (value = "Vector::new (0.0, 0.0)"))]
+  pub music_position: Vector,
+  pub target: MouseTarget,
+}
+
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug, Derivative)]
+#[derivative (Default)]
+pub enum MouseTarget {
+  #[derivative (Default)]
+  None,
+  Note { uuid: Uuid, region: NoteRegion },
+}
+
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug, Derivative)]
+#[derivative (Default)]
+pub enum NoteRegion {
+  #[derivative (Default)]
+  Body,
+  Tail
 }
 
 
@@ -52,11 +79,9 @@ pub struct Project {
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug, Derivative)]
 #[derivative (Default)]
 pub struct MouseState {
+  pub view: String,
   pub drag: Option <DragState>,
-  #[derivative (Default (value = "Vector::new (0.0, 0.0)"))]
-  pub client_position: Vector,
-  #[derivative (Default (value = "Vector::new (0.0, 0.0)"))]
-  pub music_position: Vector,
+  pub position: MousePosition,
   pub shift_key: bool,
   pub control_key: bool,
 }
@@ -73,10 +98,7 @@ pub enum DragType {
 
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
 pub struct DragState {
-  pub start_client_position: Vector,
-  pub start_music_position: Vector,
-  pub start_note: Option<Uuid>,
-  pub start_handle_type: String,
+  pub start_position: MousePosition,
   pub ever_moved_much: bool,
 }
 

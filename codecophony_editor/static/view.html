@@ -54,9 +54,39 @@ body {
     <script src="/media/jquery-3.2.1.min.js"></script>
     <script src="/media/morphdom-umd.js"></script>
     <script>
+        function send (data) {
+          $.post ({
+            url: window.location.pathname + "/action",
+            data: JSON.stringify (data),
+          })
+        }
+        function mouse_event_struct (event) {
+          const target_note = $(event.target).closest (".note");
+          let target = "None";
+          if (target_note.length === 1) {
+            target = {"Note": {uuid: target_note.attr ("uuid"), region: "Body"}}
+          }
+          return {
+            position: {
+              client_position: [event.clientX, event.clientY],
+              music_position: [0, 0],
+              target
+            },
+            shift_key: event.shiftKey,
+            control_key: event.ctrlKey,
+            event_type: event.type,
+          };
+        }
+        function send_mouse_event (event) {
+          send ({"MouseEvent": mouse_event_struct (event)});
+        }
+        $(document.body).on ("mousedown", send_mouse_event);
+        $(document.body).on ("mousemove", send_mouse_event);
+        $(document.body).on ("mouseup", send_mouse_event);
+        
         function frame() {
           $.get({
-            url: "/views/1/content",
+            url: window.location.pathname + "/content",
           })
             .done ((response) => {
               morphdom ($("#content") [0], response);

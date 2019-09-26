@@ -15,18 +15,31 @@ use typed_html::{html, text};
 use std::sync::mpsc::{Sender, Receiver, channel};
 use std::collections::HashMap;
 use crate::rendering::{PlaybackScript, MessageToRenderThread};
-use crate::data::{Project, Chunk, Note, View};
+use crate::data::{Vector, Project, Chunk, Note, View, MousePosition, MouseTarget};
 use maplit::hashmap;
 use uuid::Uuid;
 
 
 pub type Element = Box<dyn FlowContent<String>>;
 
-
-
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
-pub struct Action {
-  
+pub enum MouseEventType {
+  #[serde (rename = "mousedown")]
+  MouseDown,
+  #[serde (rename = "mousemove")]
+  MouseMove,
+  #[serde (rename = "mouseup")]
+  MouseUp,
+}
+
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
+pub enum Action {
+  MouseEvent {
+            position: MousePosition,
+            shift_key: bool,
+            control_key: bool,
+            event_type: MouseEventType,
+          },
 }
 
 pub struct ApplicationState {
@@ -61,7 +74,6 @@ impl View {
           
 
 }
-
   
 
 pub struct RocketState {
@@ -90,7 +102,7 @@ fn content(view: String, rocket_state: State<RocketState>) -> String {
 #[post("/views/<view>/action", data = "<action>")]
 fn action(view: String, action: Json<Action>, rocket_state: State<RocketState>) {
   let application_state = rocket_state.application_state.lock();
-  
+  dbg!((& view, & action));
 }
 
 #[get("/media/<file..>")]
@@ -99,6 +111,14 @@ fn media(file: PathBuf, rocket_state: State<RocketState>) -> Option<NamedFile> {
 }
 
 pub fn run(project_dir: PathBuf) {
+  /*eprintln!("{}", serde_json::to_string(&Action::MouseEvent{
+      position: MousePosition {
+        client_position: Vector::new(1.0, 1.5),
+        music_position: Vector::new(1.0, 1.5),
+        target: MouseTarget::None,
+      },
+      shift_key: false, control_key: false, event_type: MouseEventType::MouseMove}
+        ).unwrap());*/
   let chunk_id = Uuid::new_v4();
   let project = Project {
     chunks: hashmap!{chunk_id => Chunk {
@@ -111,6 +131,7 @@ pub fn run(project_dir: PathBuf) {
     ]
     }},
     views: HashMap::new(),
+    mouse: Default::default(),
   };
 
   let mut send_to_render_thread = crate::rendering::spawn_render_thread();
@@ -139,7 +160,7 @@ pub fn run(project_dir: PathBuf) {
       .log_level(LoggingLevel::Off)
       .unwrap(),
   )
-  .mount("/", routes![view, media, content])
+  .mount("/", routes![view, media, content, action])
   .manage(RocketState {
     application_state,
     root_path: PathBuf::from("."),
