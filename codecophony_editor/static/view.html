@@ -54,6 +54,9 @@ body {
     <script src="/media/jquery-3.2.1.min.js"></script>
     <script src="/media/morphdom-umd.js"></script>
     <script>
+        const parts = window.location.pathname.split("/");
+        const view = parts[parts.length - 1];
+        console.log(view);
         function send (data) {
           $.post ({
             url: window.location.pathname + "/action",
@@ -70,7 +73,7 @@ body {
             position: {
               client_position: [event.clientX, event.clientY],
               music_position: [0, 0],
-              target
+              view, target
             },
             shift_key: event.shiftKey,
             control_key: event.ctrlKey,

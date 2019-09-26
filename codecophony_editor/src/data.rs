@@ -51,6 +51,7 @@ pub struct Project {
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug, Derivative)]
 #[derivative (Default)]
 pub struct MousePosition {
+  pub view: String,
   #[derivative (Default (value = "Vector::new (0.0, 0.0)"))]
   pub client_position: Vector,
   #[derivative (Default (value = "Vector::new (0.0, 0.0)"))]
@@ -79,7 +80,7 @@ pub enum NoteRegion {
 #[derive(Clone, PartialEq, Serialize, Deserialize, Debug, Derivative)]
 #[derivative (Default)]
 pub struct MouseState {
-  pub view: String,
+  
   pub drag: Option <DragState>,
   pub position: MousePosition,
   pub shift_key: bool,

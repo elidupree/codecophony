@@ -15,7 +15,7 @@ use typed_html::{html, text};
 use std::sync::mpsc::{Sender, Receiver, channel};
 use std::collections::HashMap;
 use crate::rendering::{PlaybackScript, MessageToRenderThread};
-use crate::data::{Vector, Project, Chunk, Note, View, MousePosition, MouseTarget};
+use crate::data::{Vector, Project, Chunk, Note, View, MousePosition, MouseTarget, DragState};
 use maplit::hashmap;
 use uuid::Uuid;
 
@@ -88,12 +88,12 @@ fn view(view: String, rocket_state: State<RocketState>) -> Option<NamedFile> {
 
 #[get("/views/<view>/content")]
 fn content(view: String, rocket_state: State<RocketState>) -> String {
-  let application_state = rocket_state.application_state.lock();
+  let state = rocket_state.application_state.lock();
   let default_view = View::default();
-  let view = application_state.project.views.get(&view).unwrap_or(&default_view);
+  let view = state.project.views.get(&view).unwrap_or(&default_view);
   let document: DOMTree<String> = html! {
     <div id="content">
-      {view.rendered (& application_state.project)}
+      {view.rendered (& state.project)}
     </div>
   };
   document.to_string()
@@ -101,8 +101,34 @@ fn content(view: String, rocket_state: State<RocketState>) -> String {
 
 #[post("/views/<view>/action", data = "<action>")]
 fn action(view: String, action: Json<Action>, rocket_state: State<RocketState>) {
-  let application_state = rocket_state.application_state.lock();
-  dbg!((& view, & action));
+  let mut state = rocket_state.application_state.lock();
+  //dbg!((& view, & action));
+  match action.into_inner() {
+    Action::MouseEvent {position, shift_key, control_key, event_type} => {
+      state.project.mouse.position = position.clone();
+      state.project.mouse.shift_key = shift_key;
+      state.project.mouse.control_key = control_key;
+      
+      if let Some(drag) = state.project.mouse.drag.as_mut() {
+        if (position.client_position - drag.start_position.client_position).norm() >5.0 {
+          drag.ever_moved_much = true;
+        }
+      }
+      
+      match event_type {
+        MouseEventType::MouseMove => {}
+        MouseEventType::MouseDown => {
+          state.project.mouse.drag = Some (DragState {
+            start_position: position,
+            ever_moved_much: false,
+          });
+        }
+        MouseEventType::MouseUp => {
+          //if let Some(drag_type) = project.drag_type()
+        }
+      }
+    }
+  }
 }
 
 #[get("/media/<file..>")]
