@@ -12,11 +12,11 @@ use rocket_contrib::json::Json;
 use typed_html::dom::DOMTree;
 use typed_html::elements::FlowContent;
 use typed_html::{html, text};
-use std::sync::mpsc::{Sender, Receiver, channel};
+use std::sync::mpsc::{Sender};
 use std::collections::HashMap;
 use crate::rendering::{PlaybackScript, MessageToRenderThread};
-use crate::data::{Vector, Project, Chunk, Note, View, MousePosition, MouseTarget, DragState};
-use maplit::hashmap;
+use crate::data::{Vector, Project, Chunk, Note, View, MousePosition, MouseTarget, DragState, DragType};
+use maplit::{hashset, hashmap};
 use uuid::Uuid;
 
 
@@ -58,7 +58,7 @@ impl View {
           height: {}px;
         ", note.start_time*100.0, (100.0 - note.pitch)*15.0, note.duration*100.0, 15.0);
         html! {
-          <div class="note" data-uuid={note.uuid.to_string()} style={style}>
+          <div id={typed_html::types::Id::new (format!("note_{}", note.id))} class="note" data-id={note.id.to_string()} style={style}>
             
           </div>
         }
@@ -81,8 +81,8 @@ pub struct RocketState {
   root_path: PathBuf,
 }
 
-#[get("/views/<view>")]
-fn view(view: String, rocket_state: State<RocketState>) -> Option<NamedFile> {
+#[get("/views/<_view>")]
+fn view(_view: String, rocket_state: State<RocketState>) -> Option<NamedFile> {
   NamedFile::open(rocket_state.root_path.join("static/view.html")).ok()
 }
 
@@ -103,28 +103,64 @@ fn content(view: String, rocket_state: State<RocketState>) -> String {
 fn action(view: String, action: Json<Action>, rocket_state: State<RocketState>) {
   let mut state = rocket_state.application_state.lock();
   //dbg!((& view, & action));
+  let project = &mut state.project;
   match action.into_inner() {
     Action::MouseEvent {position, shift_key, control_key, event_type} => {
-      state.project.mouse.position = position.clone();
-      state.project.mouse.shift_key = shift_key;
-      state.project.mouse.control_key = control_key;
+      assert_eq!(position.view, view);
+      project.mouse.position = position.clone();
+      project.mouse.shift_key = shift_key;
+      project.mouse.control_key = control_key;
       
-      if let Some(drag) = state.project.mouse.drag.as_mut() {
+      if let Some(drag) = project.mouse.drag.as_mut() {
         if (position.client_position - drag.start_position.client_position).norm() >5.0 {
           drag.ever_moved_much = true;
         }
       }
       
+      let view = project.views.entry (position.view.clone()).or_default();
+      
       match event_type {
         MouseEventType::MouseMove => {}
         MouseEventType::MouseDown => {
-          state.project.mouse.drag = Some (DragState {
+          eprintln!("Drag began at {:?} ", position);
+          project.mouse.drag = Some (DragState {
             start_position: position,
             ever_moved_much: false,
           });
         }
         MouseEventType::MouseUp => {
-          //if let Some(drag_type) = project.drag_type()
+          eprintln!("Drag ended at {:?} ", position);
+          if let Some(drag_type) = project.drag_type() {
+            eprintln!("  as {:?} ", drag_type);
+            let view = project.views.get_mut (& position.view).unwrap();
+            match drag_type {
+              DragType::ClickNote (id) => view.selected = hashset! {id},
+              DragType::DragSelect {notes, ..} => {
+                view.selected = notes;
+              }
+              DragType::ExtendNotes {notes, exact_movement:_, rounded_movement} => {
+                unimplemented!()
+              }
+              DragType::MoveNotes {notes, exact_movement:_, rounded_movement, copying} => {
+                let mut new_notes = Vec::new();
+                for (chunk_id, chunk) in &mut project.chunks {
+                  for note in &mut chunk.notes {
+                    if notes.contains (& note.id) {
+                      if copying {
+                        new_notes.push ((chunk_id.clone(), Note {id: Uuid::new_v4(), ..note.clone()}));
+                      }
+                      note.pitch += rounded_movement [1];
+                      note.start_time += rounded_movement [0];
+                    }
+                  }
+                }
+                for (chunk_id, note) in new_notes {
+                  project.chunks.get_mut (& chunk_id).unwrap().notes.push (note) ;
+                }
+              }
+            }
+          }
+          project.mouse.drag = None;
         }
       }
     }
@@ -160,14 +196,14 @@ pub fn run(project_dir: PathBuf) {
     mouse: Default::default(),
   };
 
-  let mut send_to_render_thread = crate::rendering::spawn_render_thread();
+  let send_to_render_thread = crate::rendering::spawn_render_thread();
   send_to_render_thread.send(MessageToRenderThread::RestartPlaybackAt(Some(0.0))).unwrap();
   send_to_render_thread.send(MessageToRenderThread::ReplaceScript(PlaybackScript {
     notes: project.chunks.values().flat_map (| chunk | chunk.notes. iter().cloned()).collect(),
     end: None,
     loop_back_to: None,
   })).unwrap();
-  let mut application_state = ApplicationState {
+  let application_state = ApplicationState {
     send_to_render_thread, project
   };
 
@@ -183,7 +219,7 @@ pub fn run(project_dir: PathBuf) {
     Config::build(Environment::Development)
       .address("localhost")
       .port(3413)
-      .log_level(LoggingLevel::Off)
+      .log_level(LoggingLevel::Critical)
       .unwrap(),
   )
   .mount("/", routes![view, media, content, action])

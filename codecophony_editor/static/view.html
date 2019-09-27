@@ -58,6 +58,7 @@ body {
         const view = parts[parts.length - 1];
         console.log(view);
         function send (data) {
+          console.log (data) ;
           $.post ({
             url: window.location.pathname + "/action",
             data: JSON.stringify (data),
@@ -67,7 +68,7 @@ body {
           const target_note = $(event.target).closest (".note");
           let target = "None";
           if (target_note.length === 1) {
-            target = {"Note": {uuid: target_note.attr ("uuid"), region: "Body"}}
+            target = {"Note": {id: target_note.attr ("data-id"), region: "Body"}}
           }
           return {
             position: {
