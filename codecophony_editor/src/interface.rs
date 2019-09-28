@@ -47,7 +47,29 @@ pub struct ApplicationState {
   send_to_render_thread: Sender<MessageToRenderThread>,
 }
 
+pub const PIXELS_PER_TIME: f64 = 100.0;
+pub const PIXELS_PER_SEMITONE: f64 = 8.0;
 impl View {
+  pub fn client_to_time (&self, client: f64)->f64 {
+    client / PIXELS_PER_TIME
+  }
+  pub fn client_to_pitch (&self, client: f64)->f64 {
+    (client / -PIXELS_PER_SEMITONE) + 101.5
+  }
+  pub fn time_to_client (&self, time: f64)->f64 {
+    time * PIXELS_PER_TIME
+  }
+  pub fn pitch_to_client (&self, pitch: f64)->f64 {
+    (pitch - 101.5) * -PIXELS_PER_SEMITONE
+  }
+  
+  pub fn music_to_client (&self, music: Vector)->Vector {
+    Vector::new (self.time_to_client (music [0]), self.pitch_to_client (music [1]))
+  }
+  pub fn client_to_music (&self, client: Vector)->Vector {
+    Vector::new (self.client_to_time (client[0]), self.client_to_pitch (client[1]))
+  }
+
   fn rendered (&self, project: & Project)->Element {
     let notes = project.chunks.values().flat_map (| chunk | {
       chunk.notes.iter().map (| note | {
@@ -56,7 +78,7 @@ impl View {
           top: {}px;
           width: {}px;
           height: {}px;
-        ", note.start_time*100.0, (100.0 - note.pitch)*15.0, note.duration*100.0, 15.0);
+        ", self.time_to_client (note.start_time), self.pitch_to_client (note.pitch + 0.5), note.duration*PIXELS_PER_TIME, PIXELS_PER_SEMITONE);
         html! {
           <div id={typed_html::types::Id::new (format!("note_{}", note.id))} class="note" data-id={note.id.to_string()} style={style}>
             
@@ -105,8 +127,10 @@ fn action(view: String, action: Json<Action>, rocket_state: State<RocketState>) 
   //dbg!((& view, & action));
   let project = &mut state.project;
   match action.into_inner() {
-    Action::MouseEvent {position, shift_key, control_key, event_type} => {
+    Action::MouseEvent {mut position, shift_key, control_key, event_type} => {
       assert_eq!(position.view, view);
+      let view = project.views.entry (position.view.clone()).or_default();
+      position.music_position = view.client_to_music (position.client_position);
       project.mouse.position = position.clone();
       project.mouse.shift_key = shift_key;
       project.mouse.control_key = control_key;
@@ -117,7 +141,7 @@ fn action(view: String, action: Json<Action>, rocket_state: State<RocketState>) 
         }
       }
       
-      let view = project.views.entry (position.view.clone()).or_default();
+      
       
       match event_type {
         MouseEventType::MouseMove => {}
