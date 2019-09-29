@@ -15,7 +15,7 @@ use typed_html::{html, text};
 use std::sync::mpsc::{Sender};
 use std::collections::HashMap;
 use crate::rendering::{PlaybackScript, MessageToRenderThread};
-use crate::data::{Vector, Project, Chunk, Note, View, MousePosition, MouseTarget, DragState, DragType};
+use crate::data::{Vector, Project, Chunk, Note, View, MousePosition, MouseTarget, DragState, DragType, NoteRegion};
 use maplit::{hashset, hashmap};
 use uuid::Uuid;
 
@@ -80,7 +80,7 @@ impl View {
           height: {}px;
         ", self.time_to_client (note.start_time), self.pitch_to_client (note.pitch + 0.5), note.duration*PIXELS_PER_TIME, PIXELS_PER_SEMITONE);
         html! {
-          <div id={typed_html::types::Id::new (format!("note_{}", note.id))} class="note" data-id={note.id.to_string()} style={style}>
+          <div id={typed_html::types::Id::new (format!("note_{}", note.id))} class="note" data-target={serde_json::to_string (& MouseTarget::Note {id: note.id, region: NoteRegion::Body}).unwrap()} style={style}>
             
           </div>
         }

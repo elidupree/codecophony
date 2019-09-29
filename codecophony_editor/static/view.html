@@ -65,10 +65,10 @@ body {
           })
         }
         function mouse_event_struct (event) {
-          const target_note = $(event.target).closest (".note");
+          const target_element = $(event.target).closest ("[data-target]");
           let target = "None";
-          if (target_note.length === 1) {
-            target = {"Note": {id: target_note.attr ("data-id"), region: "Body"}}
+          if (target_element.length === 1) {
+            target = JSON.parse (target_element.attr ("data-target"));
           }
           return {
             position: {
