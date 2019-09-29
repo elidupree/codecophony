@@ -11,9 +11,11 @@ use std::time::Duration;
 use rocket_contrib::json::Json;
 use typed_html::dom::DOMTree;
 use typed_html::elements::FlowContent;
+use typed_html::types::{Id, Class, SpacedSet};
 use typed_html::{html, text};
 use std::sync::mpsc::{Sender};
 use std::collections::HashMap;
+use std::convert::TryInto;
 use crate::rendering::{PlaybackScript, MessageToRenderThread};
 use crate::data::{Vector, Project, Chunk, Note, View, MousePosition, MouseTarget, DragState, DragType, NoteRegion};
 use maplit::{hashset, hashmap};
@@ -71,25 +73,56 @@ impl View {
   }
 
   fn rendered (&self, project: & Project)->Element {
+    let drag_type = project.drag_type();
     let notes = project.chunks.values().flat_map (| chunk | {
       chunk.notes.iter().map (| note | {
+        let mut classes = vec!["note"];
+        if self.selected.contains (& note.id) {
+          classes.push ("selected");
+        }
+        match & drag_type {
+          Some(DragType::DragSelect {notes,..}) => {
+            if notes.contains (& note.id) {
+              classes.push ("selecting");
+            }
+          }
+          _=> {}
+        }
         let style = format! ("
           left: {}px;
           top: {}px;
           width: {}px;
           height: {}px;
         ", self.time_to_client (note.start_time), self.pitch_to_client (note.pitch + 0.5), note.duration*PIXELS_PER_TIME, PIXELS_PER_SEMITONE);
+        let classes: SpacedSet <Class> = classes.into_iter().map (Class::new). collect();
         html! {
-          <div id={typed_html::types::Id::new (format!("note_{}", note.id))} class="note" data-target={serde_json::to_string (& MouseTarget::Note {id: note.id, region: NoteRegion::Body}).unwrap()} style={style}>
+          <div id={Id::new (format!("note_{}", note.id))} class={classes} data-target={serde_json::to_string (& MouseTarget::Note {id: note.id, region: NoteRegion::Body}).unwrap()} style={style}>
             
           </div>
         }
       })
     });
     
+    let drag_selection;
+    if let Some(DragType::DragSelect {minima, maxima, ..}) = drag_type {
+      let minima = self.music_to_client (minima);
+      let maxima = self.music_to_client (maxima);
+      let size = maxima - minima;
+      let style = format! ("
+          left: {}px;
+          top: {}px;
+          width: {}px;
+          height: {}px;
+        ", minima [0], maxima [1], size [0], - size [1]);
+      drag_selection = Some (html! {
+        <div class="drag_select" style={style}></div>
+      });
+    } else {drag_selection = None;}
+    
     html! {
       <div class="view">
         {notes}
+        {drag_selection}
       </div>
     }
   }
