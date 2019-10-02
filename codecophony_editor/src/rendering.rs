@@ -3,6 +3,7 @@ use std::sync::mpsc::{Sender, Receiver, channel};
 //use std::time::Duration;
 use std::cmp::{min, max};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicI64, Ordering};
 use serde::{Deserialize, Serialize};
 
 use dsp::sample::{ToFrameSliceMut, Frame as DspFrame};
@@ -39,11 +40,15 @@ pub struct PlaybackScript {
   pub loop_back_to: Option<f64>,
 }
 
+struct ThreadsShared {
+  latest_playback_reached: AtomicI64,
+}
+
 struct PortaudioThread {
   notes: Vec<PlaybackNote>,
   next_frame_time: FrameTime,
   receiver: Receiver <MessageToPortaudioThread>,
-  sender: Sender <MessageToRenderThread>,
+  shared: Arc<ThreadsShared>,
 }
 
 
@@ -52,7 +57,6 @@ enum MessageToPortaudioThread {
   AddNote(PlaybackNote),
 }
 pub enum MessageToRenderThread {
-  PlaybackReachedTime(FrameTime),
   ReplaceScript (PlaybackScript),
   RestartPlaybackAt (Option<f64>),
 }
@@ -131,7 +135,7 @@ impl PortaudioThread {
     
     self.next_frame_time = end_time;
     //eprintln!("output {:?}", output_buffer);
-    self.sender.send (MessageToRenderThread::PlaybackReachedTime(end_time)).unwrap() ;
+    self.shared.latest_playback_reached.store (end_time, Ordering::Relaxed);
     
     portaudio::Continue
   }
@@ -152,10 +156,10 @@ struct RenderThread {
   receiver: Receiver <MessageToRenderThread>,
   portaudio_sender: Sender <MessageToPortaudioThread>,
   //main_sender: Sender <MessageToFrontend>,
+  shared: Arc<ThreadsShared>,
   script: PlaybackScript,
   render_queue: Vec<RenderPreparingNote>,
   playback_queue: Vec<RenderPreparingNote>,
-  latest_playback_reached: FrameTime,
   renders_queued_until: f64, // duration from stall/start
   specified_playback_start_script_time: Option<f64>,
   actual_playback_start_frame_time: Option<FrameTime>,
@@ -173,9 +177,6 @@ impl RenderThread {
   
   fn process_message (&mut self, message: MessageToRenderThread) {
     match message {
-      MessageToRenderThread::PlaybackReachedTime (playback_time) => {
-        self.latest_playback_reached = playback_time;
-      },
       MessageToRenderThread::RestartPlaybackAt (script_time) => {
         self.stall(script_time);
       },
@@ -183,7 +184,8 @@ impl RenderThread {
         self.script = script;
         self.stall (self.specified_playback_start_script_time.map (| script_start | {
           if let Some(frame_time) = self.actual_playback_start_frame_time {
-            let duration = (self.latest_playback_reached - frame_time) as f64/SAMPLE_HZ as f64;
+            let latest_playback_reached = self.shared.latest_playback_reached.load (Ordering::Relaxed);
+            let duration = (latest_playback_reached - frame_time) as f64/SAMPLE_HZ as f64;
             script_start + duration
           }
           else {
@@ -224,12 +226,13 @@ impl RenderThread {
     }
     
     let next_scheduled_termination: Option<FrameTime> = None;
+    let latest_playback_reached = self.shared.latest_playback_reached.load (Ordering::Relaxed);
     
     match self.actual_playback_start_frame_time {
       Some(frame_start) => {
         if let Some(next) = self.playback_queue.pop() {
           let note_frame_time = frame_start + (next.duration_from_start * SAMPLE_HZ).round() as FrameTime;
-          if note_frame_time > self.latest_playback_reached + FRAMES_PER_BUFFER as FrameTime {
+          if note_frame_time > latest_playback_reached + FRAMES_PER_BUFFER as FrameTime {
             //eprintln!(" Sending frames {:?} ", note_frames (& next.note).len());
             self.portaudio_sender.send (MessageToPortaudioThread::AddNote(PlaybackNote {
               frames: note_frames(& next.note),
@@ -245,13 +248,13 @@ impl RenderThread {
           }
           return true;
         }
-        if self.renders_queued_until > (self.latest_playback_reached - frame_start) as f64 / SAMPLE_HZ as f64 + 5.0 {
+        if self.renders_queued_until > (latest_playback_reached - frame_start) as f64 / SAMPLE_HZ as f64 + 5.0 {
           return false;
         }
       }
       None => {
         if self.renders_queued_until > start_script_time + 0.1 {
-          self.actual_playback_start_frame_time = Some(self.latest_playback_reached + FRAMES_PER_BUFFER as FrameTime*2);
+          self.actual_playback_start_frame_time = Some(latest_playback_reached + FRAMES_PER_BUFFER as FrameTime*2);
           //self.main_sender.send (MessageToFrontend::PlaybackResumed).unwrap();
         }
       }
@@ -270,12 +273,22 @@ impl RenderThread {
 }
 
 
-struct RenderThreadHandle {
-  
+pub struct RenderThreadHandle {
+  sender: Sender<MessageToRenderThread>,
+  shared: Arc <ThreadsShared>,
+}
+
+impl RenderThreadHandle {
+  pub fn send (&mut self, message: MessageToRenderThread) {
+    self.sender.send (message).unwrap();
+  }
+  pub fn playback_time (&self)->f64 {
+    self.shared.latest_playback_reached.load (Ordering::Relaxed) as f64/SAMPLE_HZ as f64
+  }
 }
 
 
-pub fn spawn_render_thread() -> Sender<MessageToRenderThread> {
+pub fn spawn_render_thread() -> RenderThreadHandle {
   //println!("Hello from backend (stdout)");
   eprintln!("Hello from backend (stderr)");
 
@@ -283,21 +296,25 @@ pub fn spawn_render_thread() -> Sender<MessageToRenderThread> {
   let (send_to_render_thread, receive_on_render_thread) = channel();
   let (send_to_portaudio_thread, receive_on_portaudio_thread) = channel();
   
+  let shared = Arc::new (ThreadsShared {
+    latest_playback_reached: AtomicI64::new (0),
+  });
+  
   let mut portaudio_thread = PortaudioThread {
     notes: Vec::new(),
     next_frame_time: 0,
     receiver: receive_on_portaudio_thread,
-    sender: send_to_render_thread.clone(),
+    shared: shared.clone(),
   };
   
   let mut render_thread = RenderThread {
     receiver: receive_on_render_thread,
     portaudio_sender: send_to_portaudio_thread,
     //main_sender: send_to_frontend,
+    shared: shared.clone(),
     script: PlaybackScript::default(),
     render_queue: Vec::new(),
     playback_queue: Vec::new(),
-    latest_playback_reached: 0,
     renders_queued_until: 0.0,
     specified_playback_start_script_time: None,
     actual_playback_start_frame_time: None,
@@ -334,6 +351,9 @@ pub fn spawn_render_thread() -> Sender<MessageToRenderThread> {
     render_thread.render_loop();
   });
   
-  send_to_render_thread
+  RenderThreadHandle {
+    sender: send_to_render_thread,
+    shared: shared,
+  }
 }
 

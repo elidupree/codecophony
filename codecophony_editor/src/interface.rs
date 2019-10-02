@@ -16,7 +16,7 @@ use typed_html::{html, text};
 use std::sync::mpsc::{Sender};
 use std::collections::HashMap;
 use std::convert::TryInto;
-use crate::rendering::{PlaybackScript, MessageToRenderThread};
+use crate::rendering::{PlaybackScript, MessageToRenderThread, RenderThreadHandle};
 use crate::data::{Vector, Project, Chunk, Note, View, MousePosition, MouseTarget, DragState, DragType, NoteRegion};
 use maplit::{hashset, hashmap};
 use uuid::Uuid;
@@ -46,7 +46,12 @@ pub enum Action {
 
 pub struct ApplicationState {
   project: Project,
-  send_to_render_thread: Sender<MessageToRenderThread>,
+  render_thread: RenderThreadHandle,
+}
+
+pub struct ViewRenderContext <'a> {
+  project: & 'a Project,
+  playback_time: f64,
 }
 
 pub const PIXELS_PER_TIME: f64 = 100.0;
@@ -72,7 +77,8 @@ impl View {
     Vector::new (self.client_to_time (client[0]), self.client_to_pitch (client[1]))
   }
 
-  fn rendered (&self, project: & Project)->Element {
+  fn rendered (&self, context: ViewRenderContext)->Element {
+    let project = context.project;
     let drag_type = project.drag_type();
     let notes = project.chunks.values().flat_map (| chunk | {
       chunk.notes.iter().map (| note | {
@@ -115,14 +121,22 @@ impl View {
           height: {}px;
         ", minima [0], maxima [1], size [0], - size [1]);
       drag_selection = Some (html! {
-        <div class="drag_select" style={style}></div>
+        <div class="drag-select" style={style}></div>
       });
     } else {drag_selection = None;}
+    
+    let style = format! ("
+          left: {}px;
+        ", self.time_to_client (context.playback_time));
+    let playback_bar = html! {
+        <div class="playback-bar" style={style}></div>
+      };
     
     html! {
       <div class="view">
         {notes}
         {drag_selection}
+        {playback_bar}
       </div>
     }
   }
@@ -148,7 +162,10 @@ fn content(view: String, rocket_state: State<RocketState>) -> String {
   let view = state.project.views.get(&view).unwrap_or(&default_view);
   let document: DOMTree<String> = html! {
     <div id="content">
-      {view.rendered (& state.project)}
+      {view.rendered (ViewRenderContext {
+        project: & state.project,
+        playback_time: state.render_thread.playback_time(),
+      })}
     </div>
   };
   document.to_string()
@@ -253,15 +270,15 @@ pub fn run(project_dir: PathBuf) {
     mouse: Default::default(),
   };
 
-  let send_to_render_thread = crate::rendering::spawn_render_thread();
-  send_to_render_thread.send(MessageToRenderThread::RestartPlaybackAt(Some(0.0))).unwrap();
-  send_to_render_thread.send(MessageToRenderThread::ReplaceScript(PlaybackScript {
+  let mut render_thread = crate::rendering::spawn_render_thread();
+  render_thread.send(MessageToRenderThread::RestartPlaybackAt(Some(0.0)));
+  render_thread.send(MessageToRenderThread::ReplaceScript(PlaybackScript {
     notes: project.chunks.values().flat_map (| chunk | chunk.notes. iter().cloned()).collect(),
     end: None,
     loop_back_to: None,
-  })).unwrap();
+  }));
   let application_state = ApplicationState {
-    send_to_render_thread, project
+    render_thread, project
   };
 
   /*if let Ok(file) = std::fs::File::open(root_path.join("last_state.json")) {
