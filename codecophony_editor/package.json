@@ -15,7 +15,7 @@
   ],
   "author": "Eli Dupree",
   "devDependencies": {
-    "electron": "^3.0.7"
+    "electron": "^9.1.0"
   },
   "dependencies": {
     "write-file-atomic": "^2.3.0",
